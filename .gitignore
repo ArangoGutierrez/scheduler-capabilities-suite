@@ -1,0 +1,4 @@
+# run outputs: events, verdicts, reports, cluster logs
+/results/
+# kubeconfigs the suite writes
+*.kubeconfig
