@@ -167,6 +167,30 @@ var _ = Describe("Write", func() {
 		Expect(report.Write(run, run)).To(MatchError(run + ": no profile directory has an events.jsonl"))
 	})
 
+	It("writes nothing when a later profile fails to evaluate", func() {
+		run := fixtureRun()
+		// kueue gets vanilla's events and claims, and a probe naming a job
+		// that was never recorded, so it fails after vanilla evaluated
+		kueue := filepath.Join(run, "kueue")
+		Expect(os.MkdirAll(kueue, 0o755)).To(Succeed())
+		for _, f := range []string{report.EventsFile, report.ClaimsFile} {
+			data, err := os.ReadFile(filepath.Join(run, "vanilla", f))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(filepath.Join(kueue, f), data, 0o644)).To(Succeed())
+		}
+		Expect(os.WriteFile(filepath.Join(kueue, report.ProbesFile), []byte(`[{"capability":"priority","params":{"high_job":"high","queued_jobs":["q9"]},"window_end":"2026-10-10T10:01:40Z"}]`), 0o644)).To(Succeed())
+		out := GinkgoT().TempDir()
+		Expect(report.Write(run, out)).To(MatchError("kueue: priority: no events recorded for job q9"))
+		Expect(filepath.Join(out, "vanilla", report.VerdictsFile)).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(out, report.SummaryFile)).NotTo(BeAnExistingFile())
+	})
+
+	It("fails when a profile's probes.json lists no probes", func() {
+		run := fixtureRun()
+		Expect(os.WriteFile(filepath.Join(run, "vanilla", report.ProbesFile), []byte("[]"), 0o644)).To(Succeed())
+		Expect(report.Write(run, run)).To(MatchError("vanilla: probes.json lists no probes"))
+	})
+
 	It("fails when a probe names a job the run never recorded, instead of guessing", func() {
 		run := fixtureRun()
 		p := filepath.Join(run, "vanilla", report.ProbesFile)
