@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -106,6 +107,19 @@ func Create(p Provider, cfg Config) (*Cluster, error) {
 	); err != nil {
 		return nil, fmt.Errorf("create kind cluster %q: %w", cfg.Name, err)
 	}
+	c, err := connect(p, cfg)
+	if err != nil {
+		// the cluster exists now: remove it, or the next run refuses the name
+		if delErr := p.Delete(cfg.Name, cfg.Kubeconfig); delErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("delete kind cluster %q: %w", cfg.Name, delErr))
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
+// connect builds the clients of a cluster kind has just created.
+func connect(p Provider, cfg Config) (*Cluster, error) {
 	restCfg, err := clientcmd.BuildConfigFromFlags("", cfg.Kubeconfig)
 	if err != nil {
 		return nil, err
