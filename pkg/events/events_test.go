@@ -67,6 +67,12 @@ var _ = Describe("events", func() {
 		Expect(err).To(MatchError("line 2: unexpected EOF"))
 	})
 
+	It("rejects two events joined on one line", func() {
+		in := line1 + strings.Replace(line1, `"seq":1`, `"seq":2`, 1) + "\n"
+		_, err := events.Read(strings.NewReader(in))
+		Expect(err).To(MatchError("line 1: unexpected data after the event"))
+	})
+
 	It("rejects an unknown transition", func() {
 		in := strings.Replace(line1, `"created"`, `"teleported"`, 1)
 		_, err := events.Read(strings.NewReader(in))
