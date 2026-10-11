@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -18,8 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
@@ -48,6 +47,9 @@ type Recorder struct {
 	ns   map[string]nsInfo
 	werr []time.Time
 	stop context.CancelFunc
+	// synced turns true once Start's initial sync is done; relists after
+	// that are recorded.
+	synced atomic.Bool
 }
 
 type nsInfo struct{ probe, tenant string }
@@ -68,14 +70,14 @@ const SyncTimeout = 2 * time.Minute
 func (r *Recorder) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	r.stop = cancel
-	labeled := informers.NewSharedInformerFactoryWithOptions(r.cs, 0,
-		informers.WithTweakListOptions(func(o *metav1.ListOptions) { o.LabelSelector = labels.Selector }))
-	all := informers.NewSharedInformerFactory(r.cs, 0)
-
-	nsInf := labeled.Core().V1().Namespaces().Informer()
-	podInf := labeled.Core().V1().Pods().Informer()
-	jobInf := labeled.Batch().V1().Jobs().Informer()
-	evInf := all.Events().V1().Events().Informer()
+	core, batch, evs := r.cs.CoreV1(), r.cs.BatchV1(), r.cs.EventsV1()
+	nss, pods := core.Namespaces(), core.Pods(metav1.NamespaceAll)
+	jobs, evlist := batch.Jobs(metav1.NamespaceAll), evs.Events(metav1.NamespaceAll)
+	nsInf := r.informer(r.cs, &corev1.Namespace{}, listWatch(nss.List, nss.Watch, labels.Selector))
+	podInf := r.informer(r.cs, &corev1.Pod{}, listWatch(pods.List, pods.Watch, labels.Selector))
+	jobInf := r.informer(r.cs, &batchv1.Job{}, listWatch(jobs.List, jobs.Watch, labels.Selector))
+	// Events carry no suite label; event() keeps those in suite namespaces.
+	evInf := r.informer(r.cs, &eventsv1.Event{}, listWatch(evlist.List, evlist.Watch, ""))
 	infs := []cache.SharedIndexInformer{nsInf, podInf, jobInf, evInf}
 
 	if _, err := nsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -103,10 +105,9 @@ func (r *Recorder) Start(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
-	var dynFactory dynamicinformer.DynamicSharedInformerFactory
 	if r.opt.WorkloadGVR != nil {
-		dynFactory = dynamicinformer.NewDynamicSharedInformerFactory(r.dyn, 0)
-		wlInf := dynFactory.ForResource(*r.opt.WorkloadGVR).Informer()
+		wls := r.dyn.Resource(*r.opt.WorkloadGVR).Namespace(metav1.NamespaceAll)
+		wlInf := r.informer(r.dyn, &unstructured.Unstructured{}, listWatch(wls.List, wls.Watch, ""))
 		if _, err := wlInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(o any) { r.workload(nil, o.(*unstructured.Unstructured)) },
 			UpdateFunc: func(old, o any) { r.workload(old.(*unstructured.Unstructured), o.(*unstructured.Unstructured)) },
@@ -125,10 +126,8 @@ func (r *Recorder) Start(ctx context.Context) error {
 			return err
 		}
 	}
-	labeled.Start(ctx.Done())
-	all.Start(ctx.Done())
-	if dynFactory != nil {
-		dynFactory.Start(ctx.Done())
+	for _, inf := range infs {
+		go inf.RunWithContext(ctx)
 	}
 	synced := make([]cache.InformerSynced, 0, len(infs))
 	for _, inf := range infs {
@@ -139,6 +138,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 	if !cache.WaitForCacheSync(syncCtx.Done(), synced...) {
 		return errors.New("recorder: watches did not sync")
 	}
+	r.synced.Store(true)
 	return nil
 }
 
@@ -160,8 +160,8 @@ func (r *Recorder) Stop() error {
 	return r.Flush()
 }
 
-// WatchErrors returns when each watch error happened. A watch error means
-// the informer relisted and the recorder may have missed a transition.
+// WatchErrors returns when each watch error or relist happened. Either means
+// the recorder may have missed a transition.
 func (r *Recorder) WatchErrors() []time.Time {
 	r.mu.Lock()
 	defer r.mu.Unlock()
