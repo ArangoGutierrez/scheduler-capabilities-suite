@@ -22,9 +22,10 @@ func (p PriorityParams) validate() error {
 	return nil
 }
 
-// Priority judges whether the high-priority pod was scheduled ahead of the
-// queued lower-priority pods. A queued pod counts as ahead only when it was
-// scheduled strictly before the high-priority pod. Time to schedule runs
+// Priority judges whether the high-priority job was scheduled ahead of the
+// queued lower-priority jobs. A queued job counts as ahead only when its
+// first pod was scheduled strictly before the high-priority job's first pod,
+// and counts once however many pods it has. Time to schedule runs
 // from the high-priority Job's submission, so a queue that holds the job
 // before creating its pods is measured too.
 func Priority(t Timeline, p PriorityParams) (Verdict, error) {
@@ -71,13 +72,13 @@ func Priority(t Timeline, p PriorityParams) (Verdict, error) {
 	switch before {
 	case 0:
 		v.Outcome = Supported
-		v.Reason = "the high-priority pod was scheduled before every queued lower-priority pod"
+		v.Reason = "the high-priority job was scheduled before every queued lower-priority job"
 	case len(p.QueuedJobs):
 		v.Outcome = NotSupported
-		v.Reason = fmt.Sprintf("all %d queued lower-priority pods were scheduled before the high-priority pod", len(p.QueuedJobs))
+		v.Reason = fmt.Sprintf("all %d queued lower-priority jobs were scheduled before the high-priority job", len(p.QueuedJobs))
 	default:
 		v.Outcome = Partial
-		v.Reason = fmt.Sprintf("%d of %d queued lower-priority pods were scheduled before the high-priority pod", before, len(p.QueuedJobs))
+		v.Reason = fmt.Sprintf("%d of %d queued lower-priority jobs were scheduled before the high-priority job", before, len(p.QueuedJobs))
 	}
 	return v, nil
 }
