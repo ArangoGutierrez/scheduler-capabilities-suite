@@ -14,6 +14,7 @@ import (
 
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/apply"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/claims"
+	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/cluster"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/kueue"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/workload"
@@ -121,6 +122,24 @@ var _ = Describe("WaitWebhook", func() {
 		err := kueue.WaitWebhook(ctx, dyn, 10*time.Millisecond, 200*time.Millisecond)
 		Expect(err).To(MatchError(`kueue webhook not ready after 200ms: admission webhook "vresourceflavor.kb.io" denied the request: forbidden`))
 		Expect(calls).To(BeNumerically(">", 1))
+	})
+})
+
+var _ = Describe("Cleanup", func() {
+	t1 := scheduler.Tenant{Name: "t1", Namespace: "scs-gang-t1", EntitlementGPUs: 32}
+	s := scheduler.Scenario{Probe: "gang", Tenants: []scheduler.Tenant{t1}}
+
+	It("returns once the probe's ClusterQueue is not found", func(ctx SpecContext) {
+		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+		Expect(kueue.New().Cleanup(ctx, &cluster.Cluster{Dynamic: dyn}, s)).To(Succeed())
+	})
+	It("returns a Get error other than not found instead of reading it as gone", func(ctx SpecContext) {
+		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+		dyn.PrependReactor("get", "clusterqueues", func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("etcdserver: request timed out")
+		})
+		err := kueue.New().Cleanup(ctx, &cluster.Cluster{Dynamic: dyn}, s)
+		Expect(err).To(MatchError("kueue: get ClusterQueue cq-scs-gang-t1: etcdserver: request timed out"))
 	})
 })
 
