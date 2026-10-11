@@ -92,6 +92,24 @@ var _ = Describe("Parse", func() {
 		Expect(err).To(MatchError(`claims: capability "backfill": expected "maybe", want supported, partial or not_supported`))
 	})
 
+	It("rejects an empty claim", func() {
+		in := strings.Replace(valid, "claim: Pods of a group are scheduled together or not at all.", `claim: ""`, 1)
+		_, err := claims.Parse([]byte(in))
+		Expect(err).To(MatchError(`claims: capability "gang": claim is empty`))
+	})
+
+	It("rejects an empty mechanism", func() {
+		in := strings.Replace(valid, "mechanism: plain Jobs", `mechanism: ""`, 1)
+		_, err := claims.Parse([]byte(in))
+		Expect(err).To(MatchError(`claims: capability "backfill": mechanism is empty`))
+	})
+
+	It("rejects a file without a version", func() {
+		in := strings.Replace(valid, "version: Kubernetes v1.37.0", `version: ""`, 1)
+		_, err := claims.Parse([]byte(in))
+		Expect(err).To(MatchError("claims: scheduler and version must both be set"))
+	})
+
 	It("rejects a field the format does not define", func() {
 		in := strings.Replace(valid, "version: Kubernetes v1.37.0", "version: Kubernetes v1.37.0\nvendor: someone", 1)
 		_, err := claims.Parse([]byte(in))
