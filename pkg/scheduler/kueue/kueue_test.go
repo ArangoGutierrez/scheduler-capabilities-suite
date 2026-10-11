@@ -29,6 +29,27 @@ var _ = Describe("Manifest", func() {
 	})
 })
 
+var _ = Describe("CheckSum", func() {
+	// shasum -a 256 of "kind: ConfigMap\n" and of "Kind: ConfigMap\n", run by hand
+	const sum = "bb6c7fb1ce4b8ac8baa8f6344623dd4602cf3d6ce859f9ff859a5a43787c5987"
+	const changed = "cdd7ee20f9043b36baab42b5be801c811b51e6ae9427424ca1b9c2d112a72b34"
+	sums := []byte("0000  other.yaml\n" + sum + "  manifests.yaml\n")
+
+	It("accepts bytes that match their SHA256SUMS line", func() {
+		got, err := kueue.CheckSum([]byte("kind: ConfigMap\n"), sums)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(sum))
+	})
+	It("refuses a manifest with one byte changed, naming both sums", func() {
+		_, err := kueue.CheckSum([]byte("Kind: ConfigMap\n"), sums)
+		Expect(err).To(MatchError("kueue: manifests.yaml has sha256 " + changed + ", SHA256SUMS says " + sum))
+	})
+	It("refuses a SHA256SUMS that does not list manifests.yaml", func() {
+		_, err := kueue.CheckSum([]byte("kind: ConfigMap\n"), []byte(sum+"  other.yaml\n"))
+		Expect(err).To(MatchError("kueue: manifests.yaml is not listed in SHA256SUMS"))
+	})
+})
+
 var _ = Describe("WithFairSharing", func() {
 	It("appends the fairSharing block to a configuration that only mentions it in a comment", func() {
 		cfg := "apiVersion: config.kueue.x-k8s.io/v1beta2\nkind: Configuration\n#fairSharing:\n#  preemptionStrategies: []\n"
