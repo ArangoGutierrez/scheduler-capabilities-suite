@@ -24,6 +24,23 @@ var _ = Describe("run", func() {
 		Expect(stderr.String()).To(Equal("usage: scs-report [-out DIR] RUN_DIR\n"))
 	})
 
+	It("with -out, writes the committed expected summary there and nothing into the run directory", func() {
+		// testdata/run is pkg/report's fixture run; testdata/summary.md is that
+		// package's hand-written wantSummary
+		out := GinkgoT().TempDir()
+		var stderr bytes.Buffer
+		Expect(run([]string{"-out", out, "testdata/run"}, &stderr)).To(Equal(0))
+		Expect(stderr.String()).To(BeEmpty())
+		want, err := os.ReadFile("testdata/summary.md")
+		Expect(err).NotTo(HaveOccurred())
+		got, err := os.ReadFile(filepath.Join(out, "summary.md"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(got)).To(Equal(string(want)))
+		Expect(filepath.Join(out, "vanilla", "verdicts.json")).To(BeAnExistingFile())
+		Expect("testdata/run/summary.md").NotTo(BeAnExistingFile())
+		Expect("testdata/run/vanilla/verdicts.json").NotTo(BeAnExistingFile())
+	})
+
 	It("exits 1 and names the problem when the run directory has no manifest", func() {
 		dir := GinkgoT().TempDir()
 		var stderr bytes.Buffer

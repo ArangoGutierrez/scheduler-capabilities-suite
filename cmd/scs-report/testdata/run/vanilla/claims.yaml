@@ -1,0 +1,9 @@
+scheduler: vanilla
+version: fixture
+claims:
+  gang: {claim: Gangs are placed whole., citation: "https://example.org/g", expected: supported, mechanism: fixture}
+  priority: {claim: High priority goes first., citation: "https://example.org/p", expected: supported, mechanism: fixture}
+  preemption: {claim: x, citation: "https://example.org/x", expected: partial, mechanism: fixture}
+  fair-share: {claim: x, citation: "https://example.org/x", expected: not_supported, mechanism: fixture}
+  backfill: {claim: x, citation: "https://example.org/x", expected: partial, mechanism: fixture}
+  topology: {claim: x, citation: "https://example.org/x", expected: supported, mechanism: fixture}
