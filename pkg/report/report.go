@@ -67,6 +67,9 @@ func ProfileVerdicts(profileDir, profile string) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(probes) == 0 {
+		return nil, fmt.Errorf("%s: %s lists no probes", profile, ProbesFile)
+	}
 	cl, err := claims.Load(filepath.Join(profileDir, ClaimsFile))
 	if err != nil {
 		return nil, err
@@ -88,12 +91,19 @@ func ProfileVerdicts(profileDir, profile string) ([]Entry, error) {
 }
 
 // Write evaluates every profile directory of runDir that has an events file
-// and writes <outDir>/<profile>/verdicts.json and <outDir>/summary.md.
+// and writes <outDir>/<profile>/verdicts.json and <outDir>/summary.md. It
+// evaluates every profile before writing any file, so an error leaves no
+// partial rebuild behind.
 func Write(runDir, outDir string) error {
 	runID, err := readRunID(filepath.Join(runDir, ManifestFile))
 	if err != nil {
 		return err
 	}
+	type profileEntries struct {
+		profile string
+		entries []Entry
+	}
+	var done []profileEntries
 	var all []Entry
 	for _, prof := range Profiles {
 		dir := filepath.Join(runDir, prof)
@@ -106,20 +116,23 @@ func Write(runDir, outDir string) error {
 		if err != nil {
 			return err
 		}
-		b, err := json.MarshalIndent(entries, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Join(outDir, prof), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(outDir, prof, VerdictsFile), append(b, '\n'), 0o644); err != nil {
-			return err
-		}
+		done = append(done, profileEntries{prof, entries})
 		all = append(all, entries...)
 	}
 	if len(all) == 0 {
 		return fmt.Errorf("%s: no profile directory has an %s", runDir, EventsFile)
+	}
+	for _, d := range done {
+		b, err := json.MarshalIndent(d.entries, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Join(outDir, d.profile), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(outDir, d.profile, VerdictsFile), append(b, '\n'), 0o644); err != nil {
+			return err
+		}
 	}
 	return os.WriteFile(filepath.Join(outDir, SummaryFile), Summary(runID, all), 0o644)
 }
