@@ -272,7 +272,7 @@ func LocalQueue(t scheduler.Tenant) map[string]any {
 	return map[string]any{
 		"apiVersion": "kueue.x-k8s.io/v1beta2",
 		"kind":       "LocalQueue",
-		"metadata":   map[string]any{"name": "lq", "namespace": t.Namespace},
+		"metadata":   map[string]any{"name": "lq", "namespace": t.Namespace, "labels": map[string]any{labels.PartOf: labels.PartOfValue, labels.Tenant: t.Name}},
 		"spec":       map[string]any{"clusterQueue": ClusterQueueName(t)},
 	}
 }
