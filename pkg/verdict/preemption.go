@@ -72,11 +72,13 @@ func Preemption(t Timeline, p PreemptionParams) (Verdict, error) {
 	remaining, evicted, lost := 0, 0, 0.0
 	for _, q := range before {
 		if !q.End.IsZero() && !q.End.After(cut) {
-			if q.EndBy != events.Succeeded {
-				evicted++
-				if !q.Running.IsZero() {
-					lost += float64(q.GPUs) * q.End.Sub(q.Running).Seconds()
-				}
+			if q.EndBy == events.Succeeded {
+				// red means the harness broke: the victims must outlive the cut
+				return Verdict{}, fmt.Errorf("victim pod %s completed instead of being evicted, so the probe did not exercise preemption", q.Name)
+			}
+			evicted++
+			if !q.Running.IsZero() {
+				lost += float64(q.GPUs) * q.End.Sub(q.Running).Seconds()
 			}
 			continue
 		}
