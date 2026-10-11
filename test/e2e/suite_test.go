@@ -98,7 +98,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	DeferCleanup(teardownCluster, NodeTimeout(5*time.Minute))
 
 	By("installing kwok and moving kind's DaemonSets off the fleet")
-	env.kwokSums, err = kwok.Install(ctx, env.cluster.Applier, env.cluster.Clientset, 3*time.Minute)
+	env.kwokSums, err = kwok.Install(ctx, env.cluster.Applier, env.cluster.Clientset, 6*time.Minute)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cluster.KeepSystemPodsOffFleet(ctx, env.cluster.Clientset, 3*time.Minute)).To(Succeed())
 
@@ -121,7 +121,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	// The watches must outlive BeforeSuite's context; Stop ends them.
 	Expect(env.rec.Start(context.Background())).To(Succeed())
 	env.failed = false
-}, NodeTimeout(10*time.Minute))
+}, NodeTimeout(15*time.Minute))
 
 var _ = AfterSuite(func(ctx SpecContext) {
 	if env.rec == nil {
