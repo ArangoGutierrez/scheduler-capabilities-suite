@@ -243,6 +243,13 @@ var _ = Describe("Write", func() {
 		Expect(report.Write(run, run)).To(MatchError("vanilla: events.jsonl without probes.json: open " + p + ": no such file or directory"))
 	})
 
+	It("names a malformed probes.json as unreadable, not as missing", func() {
+		run := fixtureRun()
+		p := filepath.Join(run, "vanilla", report.ProbesFile)
+		Expect(os.WriteFile(p, []byte("[{"), 0o644)).To(Succeed())
+		Expect(report.Write(run, run)).To(MatchError("vanilla: read probes.json: " + p + ": unexpected EOF"))
+	})
+
 	It("fails when a probe names a job the run never recorded, instead of guessing", func() {
 		run := fixtureRun()
 		p := filepath.Join(run, "vanilla", report.ProbesFile)
