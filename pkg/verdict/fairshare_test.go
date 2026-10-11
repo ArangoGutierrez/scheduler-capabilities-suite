@@ -147,6 +147,28 @@ var _ = Describe("fairness over time", func() {
 		Expect(v.Measurements["worst_shortfall_gpu_s"]).To(Equal(80.0))
 	})
 
+	// capacity 30, one 10 s window, three tenants each with a 30-GPU Job
+	// from 0 s: demand 300 GPU-s each, so water-filling entitles each to 100.
+	// a, b and c run 1, 2 and 3 GPUs for the window: x = 0.1, 0.2, 0.3, and
+	// J = 0.36 / (3 * 0.14) = 6/7. In doubles the sum depends on the order:
+	// a, b, c gives (0.1 + 0.2) + 0.3 = 0.6000000000000001 and J =
+	// 0.8571428571428573; b, c, a gives 0.6 and J = 0.857142857142857. The
+	// sorted order (a, b, c) is pinned, so a run and its rebuild agree.
+	It("sums Jain's index in tenant name order, the same on every evaluation", func() {
+		p := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 10, JobLengthSec: 10,
+			ToleranceSec: 0, CapacityGPUs: 30, WindowSec: 10}
+		tl := verdict.Build(fixtureJobs("fair-share",
+			[]job{{name: "a1", tenant: "a", gpus: 30, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 30, created: 0, end: -1},
+				{name: "c1", tenant: "c", gpus: 30, created: 0, end: -1}},
+			tenantPod("a1", "a", 1, 0, 0, 10), tenantPod("b1", "b", 2, 0, 0, 10), tenantPod("c1", "c", 3, 0, 0, 10),
+		), "fair-share", at(10))
+		for i := 0; i < 50; i++ {
+			v, err := verdict.FairShare(tl, p)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(v.Measurements["jain_median"]).To(Equal(0.8571428571428573), "evaluation %d", i)
+		}
+	})
+
 	// capacity 4, one 10 s window; a runs 3 GPUs, b runs 1 GPU, both the
 	// whole window. Capped water-filling gives entitlements 30 and 10, so
 	// x = (1, 1) and J = 1. An uncapped equal split (20, 20) would give 0.8.
