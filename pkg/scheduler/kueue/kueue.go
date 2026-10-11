@@ -126,6 +126,36 @@ func WithFairSharing(cfg string) (string, error) {
 	return cfg + FairSharing, nil
 }
 
+// addFairSharing edits the manager ConfigMap among objs to turn fair
+// sharing on, refusing a manifest without it or without its configuration key.
+func addFairSharing(objs []*unstructured.Unstructured) error {
+	const key = "controller_manager_config.yaml"
+	edited := false
+	for _, o := range objs {
+		if o.GetKind() != "ConfigMap" || o.GetName() != "kueue-manager-config" {
+			continue
+		}
+		cfg, found, err := unstructured.NestedString(o.Object, "data", key)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("kueue: kueue-manager-config has no data key %s", key)
+		}
+		if cfg, err = WithFairSharing(cfg); err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(o.Object, cfg, "data", key); err != nil {
+			return err
+		}
+		edited = true
+	}
+	if !edited {
+		return fmt.Errorf("kueue: manifest has no kueue-manager-config ConfigMap")
+	}
+	return nil
+}
+
 // Profile is the Kueue profile.
 type Profile struct{}
 
@@ -154,22 +184,8 @@ func (*Profile) Install(ctx context.Context, c *cluster.Cluster) (map[string]str
 	if err != nil {
 		return nil, err
 	}
-	edited := false
-	for _, o := range objs {
-		if o.GetKind() != "ConfigMap" || o.GetName() != "kueue-manager-config" {
-			continue
-		}
-		cfg, _, _ := unstructured.NestedString(o.Object, "data", "controller_manager_config.yaml")
-		if cfg, err = WithFairSharing(cfg); err != nil {
-			return nil, err
-		}
-		if err := unstructured.SetNestedField(o.Object, cfg, "data", "controller_manager_config.yaml"); err != nil {
-			return nil, err
-		}
-		edited = true
-	}
-	if !edited {
-		return nil, fmt.Errorf("kueue: manifest has no kueue-manager-config ConfigMap")
+	if err := addFairSharing(objs); err != nil {
+		return nil, err
 	}
 	if _, err := c.Applier.ApplyObjects(ctx, objs, 2*time.Minute); err != nil {
 		return nil, err
