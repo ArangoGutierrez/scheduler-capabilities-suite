@@ -6,7 +6,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/apply"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/claims"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/kueue"
@@ -60,6 +62,31 @@ var _ = Describe("WithFairSharing", func() {
 	It("refuses a configuration that already sets fairSharing", func() {
 		_, err := kueue.WithFairSharing("kind: Configuration\nfairSharing:\n  preemptionStrategies: []\n")
 		Expect(err).To(MatchError("kueue: the manager configuration already sets fairSharing"))
+	})
+})
+
+var _ = Describe("AddFairSharing", func() {
+	decode := func(y string) []*unstructured.Unstructured {
+		objs, err := apply.Decode([]byte(y))
+		Expect(err).NotTo(HaveOccurred())
+		return objs
+	}
+	const head = "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: kueue-manager-config, namespace: kueue-system}\n"
+
+	It("appends the fairSharing block to the manager configuration", func() {
+		objs := decode(head + "data: {controller_manager_config.yaml: \"kind: Configuration\\n\"}\n")
+		Expect(kueue.AddFairSharing(objs)).To(Succeed())
+		Expect(objs[0].Object["data"]).To(Equal(map[string]any{
+			"controller_manager_config.yaml": "kind: Configuration\nfairSharing:\n  preemptionStrategies: [LessThanOrEqualToFinalShare, LessThanInitialShare]\n",
+		}))
+	})
+	It("refuses a manager ConfigMap without the configuration key, naming the key", func() {
+		objs := decode(head + "data: {config.yaml: \"kind: Configuration\\n\"}\n")
+		Expect(kueue.AddFairSharing(objs)).To(MatchError("kueue: kueue-manager-config has no data key controller_manager_config.yaml"))
+	})
+	It("refuses a manifest without the manager ConfigMap", func() {
+		objs := decode("apiVersion: v1\nkind: ConfigMap\nmetadata: {name: other, namespace: kueue-system}\n")
+		Expect(kueue.AddFairSharing(objs)).To(MatchError("kueue: manifest has no kueue-manager-config ConfigMap"))
 	})
 })
 
