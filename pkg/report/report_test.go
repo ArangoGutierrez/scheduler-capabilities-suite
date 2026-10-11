@@ -81,11 +81,11 @@ Run fixture-run. Each verdict comes from a single run: evidence for the POC, not
 | capability | profile | documented | observed | agree | evidence |
 |---|---|---|---|---|---|
 | gang | vanilla | supported | supported | yes | no gang was partly placed for more than 5 s, and all 2 gangs completed |
-| priority | vanilla | supported | not_supported | no | all 1 queued lower-priority pods were scheduled before the high-priority pod |
+| priority | vanilla | supported | not_supported | no | all 1 queued lower-priority jobs were scheduled before the high-priority job |
 
 ## Findings
 
-- vanilla, priority: documented supported, observed not_supported (all 1 queued lower-priority pods were scheduled before the high-priority pod).
+- vanilla, priority: documented supported, observed not_supported (all 1 queued lower-priority jobs were scheduled before the high-priority job).
 
 ## Controls
 

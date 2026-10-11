@@ -31,7 +31,7 @@ var _ = Describe("Priority", func() {
 		v, err := verdict.Priority(tl, params)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(v.Outcome).To(Equal(verdict.Supported))
-		Expect(v.Reason).To(Equal("the high-priority pod was scheduled before every queued lower-priority pod"))
+		Expect(v.Reason).To(Equal("the high-priority job was scheduled before every queued lower-priority job"))
 		Expect(v.Measurements).To(Equal(map[string]float64{"queued_jobs": 4, "queued_before_high": 0, "high_time_to_schedule_s": 27}))
 	})
 
@@ -49,7 +49,7 @@ var _ = Describe("Priority", func() {
 		v, err := verdict.Priority(tl, params)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(v.Outcome).To(Equal(verdict.Partial))
-		Expect(v.Reason).To(Equal("2 of 4 queued lower-priority pods were scheduled before the high-priority pod"))
+		Expect(v.Reason).To(Equal("2 of 4 queued lower-priority jobs were scheduled before the high-priority job"))
 	})
 
 	It("counts a queued job with two pods ahead once", func() {
@@ -64,7 +64,7 @@ var _ = Describe("Priority", func() {
 		v, err := verdict.Priority(tl, params)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(v.Outcome).To(Equal(verdict.Partial))
-		Expect(v.Reason).To(Equal("3 of 4 queued lower-priority pods were scheduled before the high-priority pod"))
+		Expect(v.Reason).To(Equal("3 of 4 queued lower-priority jobs were scheduled before the high-priority job"))
 		Expect(v.Measurements["queued_before_high"]).To(Equal(3.0))
 	})
 
@@ -74,7 +74,7 @@ var _ = Describe("Priority", func() {
 		v, err := verdict.Priority(tl, params)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(v.Outcome).To(Equal(verdict.NotSupported))
-		Expect(v.Reason).To(Equal("all 4 queued lower-priority pods were scheduled before the high-priority pod"))
+		Expect(v.Reason).To(Equal("all 4 queued lower-priority jobs were scheduled before the high-priority job"))
 	})
 
 	It("is not supported when the high-priority pod is never scheduled", func() {

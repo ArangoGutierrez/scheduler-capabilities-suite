@@ -82,7 +82,7 @@
     "observed": {
       "capability": "priority",
       "outcome": "not_supported",
-      "reason": "all 1 queued lower-priority pods were scheduled before the high-priority pod",
+      "reason": "all 1 queued lower-priority jobs were scheduled before the high-priority job",
       "measurements": {
         "high_time_to_schedule_s": 37,
         "queued_before_high": 1,
