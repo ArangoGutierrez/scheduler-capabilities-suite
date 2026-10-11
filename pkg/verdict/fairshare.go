@@ -208,10 +208,17 @@ func fairnessOverTime(t Timeline, capacityGPUs int64, windowSec float64) fairnes
 			f.Excluded++
 			continue
 		}
+		// sum in tenant name order: float addition order would otherwise
+		// follow map order and change the last bit between a run and its rebuild
+		names := make([]string, 0, len(ent))
+		for tn := range ent {
+			names = append(names, tn)
+		}
+		sort.Strings(names)
 		var sum, sq float64
 		n := 0
-		for tn, e := range ent {
-			if e > 0 {
+		for _, tn := range names {
+			if e := ent[tn]; e > 0 {
 				x := delivered[tn] / e
 				sum += x
 				sq += x * x
