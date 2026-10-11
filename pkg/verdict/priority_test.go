@@ -52,6 +52,22 @@ var _ = Describe("Priority", func() {
 		Expect(v.Reason).To(Equal("2 of 4 queued lower-priority pods were scheduled before the high-priority pod"))
 	})
 
+	It("counts a queued job with two pods ahead once", func() {
+		// q1 has two pods, both scheduled before the high-priority pod (50 s);
+		// q2 and q3 go first too, q4 after: 3 of the 4 queued jobs are ahead,
+		// not "all 4" as counting pods (2 + 1 + 1) would say
+		tl := verdict.Build(fixture("priority",
+			done("q1-0", "q1", "n1", 1, 30, 30.5, 50), done("q1-1", "q1", "n2", 1, 31, 31.5, 51),
+			done("q2", "q2", "n3", 1, 40, 40.5, 60), done("q3", "q3", "n4", 1, 45, 45.5, 65),
+			done("q4", "q4", "n1", 1, 70, 70.5, 90), done("h0", "high", "n1", 3, 50, 50.5, 70),
+		), "priority", at(100))
+		v, err := verdict.Priority(tl, params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Outcome).To(Equal(verdict.Partial))
+		Expect(v.Reason).To(Equal("3 of 4 queued lower-priority pods were scheduled before the high-priority pod"))
+		Expect(v.Measurements["queued_before_high"]).To(Equal(3.0))
+	})
+
 	It("is not supported when the pods run in arrival order", func() {
 		tl := verdict.Build(fixture("priority", append(queued(30, 40, 50, 60),
 			done("h0", "high", "n1", 3, 70, 70.5, 90))...), "priority", at(100))

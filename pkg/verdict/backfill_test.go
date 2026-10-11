@@ -48,6 +48,28 @@ var _ = Describe("Backfill", func() {
 		Expect(v.Measurements).To(Equal(map[string]float64{"small_before_big": 2, "big_start_delay_s": 1}))
 	})
 
+	It("counts a short job with two pods once", func() {
+		// s0 has two pods, both scheduled before the gang (61 s); s1 also goes
+		// first, s2 and s3 after: 2 short jobs ran first, not 3 as counting
+		// pods would say. Delay 61 - 60 = 1 s, within the tolerance.
+		tl := verdict.Build(fixture("backfill",
+			done("blk0", "blk0", "n1", 0, 0, 0.5, 50), done("blk1", "blk1", "n2", 0, 0, 0.5, 55),
+			done("blk2", "blk2", "n3", 0, 0, 0.5, 60),
+			pod{name: "b0", job: "big", tenant: "t1", gpus: 8, node: "n1", created: 1, scheduled: 61, running: 61.5, end: -1},
+			pod{name: "b1", job: "big", tenant: "t1", gpus: 8, node: "n2", created: 1, scheduled: 61, running: 61.5, end: -1},
+			pod{name: "b2", job: "big", tenant: "t1", gpus: 8, node: "n3", created: 1, scheduled: 61, running: 61.5, end: -1},
+			pod{name: "b3", job: "big", tenant: "t1", gpus: 8, node: "n4", created: 1, scheduled: 61, running: 61.5, end: -1},
+			done("s0-0", "s0", "n4", 2, 2, 2.5, 27), done("s0-1", "s0", "n4", 2, 3, 3.5, 28),
+			done("s1", "s1", "n4", 2, 28, 28.5, 53),
+			done("s2", "s2", "n1", 2, 62, 62.5, 87), done("s3", "s3", "n2", 2, 63, 63.5, 88),
+		), "backfill", at(200))
+		v, err := verdict.Backfill(tl, params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Outcome).To(Equal(verdict.Supported))
+		Expect(v.Reason).To(Equal("2 short jobs ran before the gang, which started 1 s after its earliest possible start"))
+		Expect(v.Measurements).To(Equal(map[string]float64{"small_before_big": 2, "big_start_delay_s": 1}))
+	})
+
 	It("still counts a start exactly at the tolerance as on time", func() {
 		v, err := verdict.Backfill(scenario(65, 2, 27.5, 66, 91), params)
 		Expect(err).NotTo(HaveOccurred())
