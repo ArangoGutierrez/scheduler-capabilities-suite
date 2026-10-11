@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/claims"
@@ -31,6 +32,10 @@ const (
 	ClaimsFile   = "claims.yaml"
 	VerdictsFile = "verdicts.json"
 )
+
+// ErrNoProbes is Write's error when no profile of the run finished a probe:
+// there is nothing to report.
+var ErrNoProbes = errors.New("no profile finished a probe")
 
 // Entry is one probe's documented claim and observed verdict.
 type Entry struct {
@@ -91,9 +96,10 @@ func ProfileVerdicts(profileDir, profile string) ([]Entry, error) {
 }
 
 // Write evaluates every profile directory of runDir that has an events file
-// and writes <outDir>/<profile>/verdicts.json and <outDir>/summary.md. It
-// evaluates every profile before writing any file, so an error leaves no
-// partial rebuild behind.
+// and writes <outDir>/<profile>/verdicts.json and <outDir>/summary.md. A
+// profile whose probes.json is empty finished no probe: it gets no
+// verdicts.json and a line in the summary. It evaluates every profile
+// before writing any file, so an error leaves no partial rebuild behind.
 func Write(runDir, outDir string) error {
 	runID, err := readRunID(filepath.Join(runDir, ManifestFile))
 	if err != nil {
@@ -105,12 +111,23 @@ func Write(runDir, outDir string) error {
 	}
 	var done []profileEntries
 	var all []Entry
+	var empty []string
+	seen := false
 	for _, prof := range Profiles {
 		dir := filepath.Join(runDir, prof)
 		if _, err := os.Stat(filepath.Join(dir, EventsFile)); errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {
 			return err
+		}
+		seen = true
+		probes, err := ReadProbes(filepath.Join(dir, ProbesFile))
+		if err != nil {
+			return fmt.Errorf("%s: %s without %s: %w", prof, EventsFile, ProbesFile, err)
+		}
+		if len(probes) == 0 {
+			empty = append(empty, prof)
+			continue
 		}
 		entries, err := ProfileVerdicts(dir, prof)
 		if err != nil {
@@ -119,8 +136,11 @@ func Write(runDir, outDir string) error {
 		done = append(done, profileEntries{prof, entries})
 		all = append(all, entries...)
 	}
-	if len(all) == 0 {
+	if !seen {
 		return fmt.Errorf("%s: no profile directory has an %s", runDir, EventsFile)
+	}
+	if len(done) == 0 {
+		return ErrNoProbes
 	}
 	for _, d := range done {
 		b, err := json.MarshalIndent(d.entries, "", "  ")
@@ -134,7 +154,7 @@ func Write(runDir, outDir string) error {
 			return err
 		}
 	}
-	return os.WriteFile(filepath.Join(outDir, SummaryFile), Summary(runID, all), 0o644)
+	return os.WriteFile(filepath.Join(outDir, SummaryFile), Summary(runID, all, empty), 0o644)
 }
 
 func readRunID(path string) (string, error) {
@@ -155,8 +175,9 @@ func readRunID(path string) (string, error) {
 }
 
 // Summary renders summary.md: a row per capability and profile, then the
-// findings (documented and observed disagree), then the controls.
-func Summary(runID string, entries []Entry) []byte {
+// findings (documented and observed disagree), then the controls, then the
+// profiles that finished no probe, if any.
+func Summary(runID string, entries []Entry, noVerdicts []string) []byte {
 	var b strings.Builder
 	b.WriteString("# Scheduling capabilities: documented vs observed\n\n")
 	fmt.Fprintf(&b, "Run %s. Each verdict comes from a single run: evidence for the POC, not a result to quote.\n\n", runID)
@@ -197,6 +218,14 @@ func Summary(runID string, entries []Entry) []byte {
 	}
 	if !found {
 		b.WriteString("None.\n")
+	}
+	if len(noVerdicts) > 0 {
+		names := append([]string(nil), noVerdicts...)
+		sort.Strings(names)
+		b.WriteString("\n## Profiles without verdicts\n\n")
+		for _, p := range names {
+			fmt.Fprintf(&b, "- %s: no probe finished in this run.\n", p)
+		}
 	}
 	return []byte(b.String())
 }
