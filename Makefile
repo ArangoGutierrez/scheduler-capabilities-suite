@@ -3,7 +3,7 @@ GO ?= go
 SCHEDULER ?= all
 FOCUS ?=
 RESULTS ?= $(CURDIR)/results
-RUN_ID ?= $(shell date -u +%Y%m%dT%H%M%SZ)-$(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet HEAD -- 2>/dev/null || echo -dirty)
+RUN_ID ?= $(shell date -u +%Y%m%dT%H%M%SZ)-$(shell git rev-parse --short HEAD 2>/dev/null)$(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo -dirty)
 
 .PHONY: test lint e2e report
 

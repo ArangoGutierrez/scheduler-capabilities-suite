@@ -9,7 +9,7 @@ profiles=$1 run_id=$2 results=$3 filter=${4:-}
 mkdir -p "$results" && results=$(cd "$results" && pwd)
 commit=$(git rev-parse --short HEAD)
 dirty=false
-git diff --quiet HEAD -- || dirty=true
+[ -z "$(git status --porcelain)" ] || dirty=true
 rc=0
 for p in $profiles; do
   out="$results/$run_id/$p"
@@ -17,7 +17,7 @@ for p in $profiles; do
   args=(--no-color -v --timeout=60m --json-report=ginkgo-report.json --output-dir="$out")
   [ -n "$filter" ] && args+=(--label-filter="$filter")
   SCS_PROFILE=$p SCS_RUN_ID=$run_id SCS_RESULTS=$results SCS_GIT_COMMIT=$commit SCS_GIT_DIRTY=$dirty \
-    go tool ginkgo "${args[@]}" ./test/e2e 2>&1 | tee "$out/ginkgo.log"
+    go tool ginkgo "${args[@]}" ./test/e2e 2>&1 | tee -i "$out/ginkgo.log"
   r=${PIPESTATUS[0]}
   if [ "$r" -ne 0 ]; then
     echo "e2e: profile $p failed (rc $r)" >&2
