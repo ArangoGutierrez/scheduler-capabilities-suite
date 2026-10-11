@@ -74,6 +74,18 @@ var _ = Describe("Preemption", func() {
 		Expect(v.Reason).To(Equal("the high-priority job did not get all 2 pods scheduled"))
 	})
 
+	It("fails, as a harness error, when a victim completes on its own", func() {
+		// the victims succeed at 20 s, before the high-priority pods are
+		// scheduled at 21 s: nothing was evicted, so preemption was not tested
+		tl := verdict.Build(fixture("preemption",
+			victim("v0", "n1", 20, events.Succeeded), victim("v1", "n2", 20, events.Succeeded),
+			victim("v2", "n3", 20, events.Succeeded), victim("v3", "n4", 20, events.Succeeded),
+			high("h0", "n1", 21), high("h1", "n2", 21),
+		), "preemption", at(60))
+		_, err := verdict.Preemption(tl, params)
+		Expect(err).To(MatchError("victim pod v0 completed instead of being evicted, so the probe did not exercise preemption"))
+	})
+
 	It("fails, as a harness error, when no victim was running first", func() {
 		tl := verdict.Build(fixture("preemption",
 			pending("v0", "victim", 0), high("h0", "n1", 11.0), high("h1", "n2", 11.2),
