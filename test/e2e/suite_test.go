@@ -21,13 +21,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/cluster"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/fleet"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/kwok"
-	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/labels"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/recorder"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/report"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
@@ -111,7 +109,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	By("installing the " + name + " profile")
 	env.installed, err = env.profile.Install(ctx, env.cluster)
 	Expect(err).NotTo(HaveOccurred())
-	env.offsetStart, err = clockOffset(ctx)
+	env.offsetStart, _, err = cluster.ClockOffset(ctx, env.cluster.Clientset)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("starting the recorder")
@@ -133,9 +131,26 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	env.failed = true
 	Expect(env.rec.Stop()).To(Succeed())
 	Expect(env.eventsFile.Close()).To(Succeed())
-	// The manifest comes first: report.Write reads the run ID from it.
-	offsetEnd, err := clockOffset(ctx)
+	// probes.json and claims.yaml come before any API call: each probe's
+	// parameters live only in env.probes, and without them the run cannot
+	// be rebuilt. probes.json is written even when no probe finished ([]),
+	// so the report can tell that profile from a broken run.
+	probes := env.probes
+	if probes == nil {
+		probes = []verdict.Probe{}
+	}
+	writeJSON(filepath.Join(env.profileDir, report.ProbesFile), probes)
+	claims, err := os.ReadFile(filepath.Join("..", "..", env.profile.ClaimsFile()))
 	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(filepath.Join(env.profileDir, report.ClaimsFile), claims, 0o644)).To(Succeed())
+	// A failed create leaves no measurement and fails here. A failed delete
+	// after a good measurement is held until the manifest, the report and
+	// the rebuild check are done, then fails the suite.
+	offsetEnd, measured, clockErr := cluster.ClockOffset(ctx, env.cluster.Clientset)
+	if !measured {
+		Expect(clockErr).NotTo(HaveOccurred())
+	}
+	// The manifest comes before report.Write, which reads the run ID from it.
 	cfg := cluster.SuiteConfig(env.cluster.Name, env.cluster.Kubeconfig)
 	fleetJSON, err := json.Marshal(fleet.Default())
 	Expect(err).NotTo(HaveOccurred())
@@ -148,16 +163,6 @@ var _ = AfterSuite(func(ctx SpecContext) {
 		Images: images(ctx), Manifests: env.kwokSums, Scheduler: env.installed,
 		ClockOffsetStartS: env.offsetStart, ClockOffsetEndS: offsetEnd, WatchErrors: len(env.rec.WatchErrors()),
 	})).To(Succeed())
-	// probes.json is written even when no probe finished ([]), so the
-	// report can tell that profile from a broken run.
-	probes := env.probes
-	if probes == nil {
-		probes = []verdict.Probe{}
-	}
-	writeJSON(filepath.Join(env.profileDir, report.ProbesFile), probes)
-	claims, err := os.ReadFile(filepath.Join("..", "..", env.profile.ClaimsFile()))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(os.WriteFile(filepath.Join(env.profileDir, report.ClaimsFile), claims, 0o644)).To(Succeed())
 	err = report.Write(env.runDir, env.runDir)
 	if len(env.probes) == 0 {
 		// With no probe finished here and none in an earlier profile of the
@@ -166,6 +171,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 		if !errors.Is(err, report.ErrNoProbes) {
 			Expect(err).NotTo(HaveOccurred())
 		}
+		Expect(clockErr).NotTo(HaveOccurred(), "the end-of-run clock check")
 		env.failed = specsFailed
 		return
 	}
@@ -177,6 +183,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	for i, e := range entries {
 		Expect(e.Observed).To(Equal(env.verdicts[i]), "probe %s", e.Capability)
 	}
+	Expect(clockErr).NotTo(HaveOccurred(), "the end-of-run clock check")
 	env.failed = specsFailed
 }, NodeTimeout(5*time.Minute))
 
@@ -192,24 +199,6 @@ func teardownCluster(ctx SpecContext) {
 		return
 	}
 	Expect(env.cluster.Delete()).To(Succeed())
-}
-
-// clockOffset returns the API server's creation timestamp for a new object
-// minus the host time just before creating it, in seconds. The server
-// stamps whole seconds, so values in (-1, +1) mean the clocks agree to the
-// second. The ConfigMap carries the suite's label and a failed delete is an
-// error, so no unlabeled or leftover object stays behind.
-func clockOffset(ctx context.Context) (float64, error) {
-	before := time.Now()
-	cm, err := env.cluster.Clientset.CoreV1().ConfigMaps("default").Create(ctx,
-		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{GenerateName: "scs-clock-", Labels: map[string]string{labels.PartOf: labels.PartOfValue}}}, metav1.CreateOptions{})
-	if err != nil {
-		return 0, err
-	}
-	if err := env.cluster.Clientset.CoreV1().ConfigMaps("default").Delete(ctx, cm.Name, metav1.DeleteOptions{}); err != nil {
-		return 0, fmt.Errorf("delete clock ConfigMap %s: %w", cm.Name, err)
-	}
-	return cm.CreationTimestamp.Sub(before).Seconds(), nil
 }
 
 // images maps each running image reference in the system namespaces to its
