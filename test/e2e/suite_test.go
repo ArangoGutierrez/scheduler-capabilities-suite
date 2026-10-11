@@ -27,6 +27,7 @@ import (
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/cluster"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/fleet"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/kwok"
+	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/labels"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/recorder"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/report"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
@@ -186,15 +187,18 @@ func teardownCluster(ctx SpecContext) {
 // clockOffset returns the API server's creation timestamp for a new object
 // minus the host time just before creating it, in seconds. The server
 // stamps whole seconds, so values in (-1, +1) mean the clocks agree to the
-// second.
+// second. The ConfigMap carries the suite's label and a failed delete is an
+// error, so no unlabeled or leftover object stays behind.
 func clockOffset(ctx context.Context) (float64, error) {
 	before := time.Now()
 	cm, err := env.cluster.Clientset.CoreV1().ConfigMaps("default").Create(ctx,
-		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{GenerateName: "scs-clock-"}}, metav1.CreateOptions{})
+		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{GenerateName: "scs-clock-", Labels: map[string]string{labels.PartOf: labels.PartOfValue}}}, metav1.CreateOptions{})
 	if err != nil {
 		return 0, err
 	}
-	_ = env.cluster.Clientset.CoreV1().ConfigMaps("default").Delete(ctx, cm.Name, metav1.DeleteOptions{})
+	if err := env.cluster.Clientset.CoreV1().ConfigMaps("default").Delete(ctx, cm.Name, metav1.DeleteOptions{}); err != nil {
+		return 0, fmt.Errorf("delete clock ConfigMap %s: %w", cm.Name, err)
+	}
 	return cm.CreationTimestamp.Sub(before).Seconds(), nil
 }
 
