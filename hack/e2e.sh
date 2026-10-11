@@ -9,7 +9,7 @@ profiles=$1 run_id=$2 results=$3 filter=${4:-}
 mkdir -p "$results" && results=$(cd "$results" && pwd)
 commit=$(git rev-parse --short HEAD)
 dirty=false
-[ -z "$(git status --porcelain)" ] || dirty=true
+[ -z "$(git status --porcelain --untracked-files=normal)" ] || dirty=true
 rc=0
 # One Ctrl-C reaches the running suite, which cleans up and exits; the loop
 # must then stop rather than create the next profile's cluster.
