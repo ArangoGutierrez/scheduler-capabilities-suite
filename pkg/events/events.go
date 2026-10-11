@@ -106,7 +106,15 @@ func (enc *Encoder) Encode(e Event) error {
 	if err != nil {
 		return fmt.Errorf("seq %d: %w", e.Seq, err)
 	}
-	_, err = enc.w.Write(append(b, '\n'))
+	line := append(b, '\n')
+	// flush first when the line does not fit, so the underlying writer only
+	// ever receives whole lines; an empty buffer writes a long line directly
+	if len(line) > enc.w.Available() && enc.w.Buffered() > 0 {
+		if err := enc.w.Flush(); err != nil {
+			return err
+		}
+	}
+	_, err = enc.w.Write(line)
 	return err
 }
 
