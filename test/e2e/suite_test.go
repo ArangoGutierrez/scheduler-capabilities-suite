@@ -74,7 +74,12 @@ var _ = ReportAfterEach(func(r SpecReport) {
 	}
 })
 
+// The suite nodes mark the run failed while they run and clear the mark
+// only when they complete, so KEEP_CLUSTER_ON_FAILURE also covers a
+// BeforeSuite or AfterSuite failure, panic or timeout; ReportAfterEach
+// sees specs only.
 var _ = BeforeSuite(func(ctx SpecContext) {
+	env.failed = true
 	name := os.Getenv("SCS_PROFILE")
 	mk, ok := profiles[name]
 	Expect(ok).To(BeTrue(), "SCS_PROFILE=%q is not a known profile", name)
@@ -117,12 +122,15 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		recorder.Options{RunID: env.runID, WorkloadGVR: env.profile.WorkloadGVR()})
 	// The watches must outlive BeforeSuite's context; Stop ends them.
 	Expect(env.rec.Start(context.Background())).To(Succeed())
+	env.failed = false
 }, NodeTimeout(10*time.Minute))
 
 var _ = AfterSuite(func(ctx SpecContext) {
 	if env.rec == nil {
 		return
 	}
+	specsFailed := env.failed
+	env.failed = true
 	Expect(env.rec.Stop()).To(Succeed())
 	Expect(env.eventsFile.Close()).To(Succeed())
 	// The manifest comes first: report.Write reads the run ID from it.
@@ -158,6 +166,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 		if !errors.Is(err, report.ErrNoProbes) {
 			Expect(err).NotTo(HaveOccurred())
 		}
+		env.failed = specsFailed
 		return
 	}
 	Expect(err).NotTo(HaveOccurred())
@@ -168,6 +177,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	for i, e := range entries {
 		Expect(e.Observed).To(Equal(env.verdicts[i]), "probe %s", e.Capability)
 	}
+	env.failed = specsFailed
 }, NodeTimeout(5*time.Minute))
 
 // teardownCluster runs after AfterSuite, even when BeforeSuite failed part way.
