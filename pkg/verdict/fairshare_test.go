@@ -191,6 +191,25 @@ var _ = Describe("fairness over time", func() {
 		}
 	})
 
+	// The same fixture with a, b and c running 3, 1 and 2 GPUs: x = 0.3, 0.1,
+	// 0.2 in name order. Rounding every step, sq = (0.09 + 0.010000000000000002)
+	// + 0.04000000000000001 = 0.14 and J = 0.8571428571428573. A fused
+	// multiply-add (sq += x*x in one rounding, as arm64 does) gives
+	// sq = 0.13999999999999999 and J = 0.8571428571428575, so a run on one
+	// architecture and its rebuild on another would differ in the last bit.
+	It("rounds each product before adding, so every architecture gives the same bits", func() {
+		p := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 10, JobLengthSec: 10,
+			ToleranceSec: 0, CapacityGPUs: 30, WindowSec: 10}
+		tl := verdict.Build(fixtureJobs("fair-share",
+			[]job{{name: "a1", tenant: "a", gpus: 30, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 30, created: 0, end: -1},
+				{name: "c1", tenant: "c", gpus: 30, created: 0, end: -1}},
+			tenantPod("a1", "a", 3, 0, 0, 10), tenantPod("b1", "b", 1, 0, 0, 10), tenantPod("c1", "c", 2, 0, 0, 10),
+		), "fair-share", at(10))
+		v, err := verdict.FairShare(tl, p)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Measurements["jain_median"]).To(Equal(0.8571428571428573))
+	})
+
 	// capacity 4, one 10 s window; a runs 3 GPUs, b runs 1 GPU, both the
 	// whole window. Capped water-filling gives entitlements 30 and 10, so
 	// x = (1, 1) and J = 1. An uncapped equal split (20, 20) would give 0.8.
