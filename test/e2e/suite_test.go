@@ -274,7 +274,7 @@ func register(order int, specs func()) bool {
 }
 
 // The probes run in registration order, each on an empty fleet.
-var _ = Describe("probes", Ordered, func() {
+var _ = Describe("probes", Ordered, Serial, func() {
 	orders := make([]int, 0, len(registry))
 	for o := range registry {
 		orders = append(orders, o)
