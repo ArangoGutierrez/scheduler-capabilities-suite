@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,19 +21,30 @@ func TestCluster(t *testing.T) {
 	}
 }
 
-// fakeProvider records calls; it never touches Docker.
+// fakeProvider records calls; it never touches Docker. Create fails unless
+// createOK is set; Delete returns deleteErr.
 type fakeProvider struct {
-	existing []string
-	created  []string
-	deleted  []string
+	existing  []string
+	createOK  bool
+	deleteErr error
+	created   []string
+	deleted   []string
+	deletedKC []string
 }
 
 func (f *fakeProvider) List() ([]string, error) { return f.existing, nil }
 func (f *fakeProvider) Create(name string, _ ...kindcluster.CreateOption) error {
 	f.created = append(f.created, name)
+	if f.createOK {
+		return nil
+	}
 	return errors.New("fake: no docker")
 }
-func (f *fakeProvider) Delete(name, _ string) error   { f.deleted = append(f.deleted, name); return nil }
+func (f *fakeProvider) Delete(name, kubeconfig string) error {
+	f.deleted = append(f.deleted, name)
+	f.deletedKC = append(f.deletedKC, kubeconfig)
+	return f.deleteErr
+}
 func (f *fakeProvider) CollectLogs(_, _ string) error { return nil }
 
 var _ = Describe("Create", func() {
@@ -49,6 +61,26 @@ var _ = Describe("Create", func() {
 		_, err := Create(p, SuiteConfig("scs-kueue", "/tmp/kc"))
 		Expect(err).To(MatchError(`create kind cluster "scs-kueue": fake: no docker`))
 		Expect(p.created).To(Equal([]string{"scs-kueue"}))
+		Expect(p.deleted).To(BeEmpty())
+	})
+
+	It("deletes the cluster it created when a later step fails, and returns that step's error", func() {
+		// the fake creates nothing on disk, so the kubeconfig kind would have
+		// written is missing and loading it fails after creation
+		kc := filepath.Join(GinkgoT().TempDir(), "scs-vanilla.kubeconfig")
+		p := &fakeProvider{existing: []string{"bench-mokka"}, createOK: true}
+		_, err := Create(p, SuiteConfig("scs-vanilla", kc))
+		Expect(err).To(MatchError("stat " + kc + ": no such file or directory"))
+		Expect(p.deleted).To(Equal([]string{"scs-vanilla"}))
+		Expect(p.deletedKC).To(Equal([]string{kc}))
+	})
+
+	It("reports a failed cleanup alongside the original error", func() {
+		kc := filepath.Join(GinkgoT().TempDir(), "scs-vanilla.kubeconfig")
+		p := &fakeProvider{createOK: true, deleteErr: errors.New("fake: delete failed")}
+		_, err := Create(p, SuiteConfig("scs-vanilla", kc))
+		Expect(err).To(MatchError("stat " + kc + ": no such file or directory\ndelete kind cluster \"scs-vanilla\": fake: delete failed"))
+		Expect(p.deleted).To(Equal([]string{"scs-vanilla"}))
 	})
 })
 
