@@ -122,8 +122,10 @@ func Write(runDir, outDir string) error {
 		}
 		seen = true
 		probes, err := ReadProbes(filepath.Join(dir, ProbesFile))
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("%s: %s without %s: %w", prof, EventsFile, ProbesFile, err)
+		} else if err != nil {
+			return fmt.Errorf("%s: read %s: %w", prof, ProbesFile, err)
 		}
 		if len(probes) == 0 {
 			empty = append(empty, prof)
