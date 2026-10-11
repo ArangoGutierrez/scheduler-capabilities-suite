@@ -306,8 +306,12 @@ func (*Profile) Cleanup(ctx context.Context, c *cluster.Cluster, s scheduler.Sce
 	}
 	return wait.PollUntilContextTimeout(ctx, time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
 		for _, t := range s.Tenants {
-			if _, err := c.Dynamic.Resource(cqGVR).Get(ctx, ClusterQueueName(t), metav1.GetOptions{}); err == nil {
+			_, err := c.Dynamic.Resource(cqGVR).Get(ctx, ClusterQueueName(t), metav1.GetOptions{})
+			if err == nil {
 				return false, nil
+			}
+			if !apierrors.IsNotFound(err) {
+				return false, fmt.Errorf("kueue: get ClusterQueue %s: %w", ClusterQueueName(t), err)
 			}
 		}
 		return true, nil
