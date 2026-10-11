@@ -161,6 +161,12 @@ var _ = Describe("Write", func() {
 		}
 	})
 
+	It("fails when the manifest's run_id is empty", func() {
+		run := fixtureRun()
+		Expect(os.WriteFile(filepath.Join(run, report.ManifestFile), []byte(`{"schema":1,"run_id":""}`), 0o644)).To(Succeed())
+		Expect(report.Write(run, run)).To(MatchError(filepath.Join(run, "manifest.json") + ": run_id is empty"))
+	})
+
 	It("fails when no profile directory has events", func() {
 		run := GinkgoT().TempDir()
 		Expect(os.WriteFile(filepath.Join(run, report.ManifestFile), []byte(`{"run_id":"x"}`), 0o644)).To(Succeed())
