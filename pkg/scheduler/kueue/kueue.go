@@ -88,18 +88,28 @@ func Manifest() ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	got, err := checkSum(data, sums)
+	if err != nil {
+		return nil, "", err
+	}
+	return data, got, nil
+}
+
+// checkSum returns data's sha256 when it matches the manifests.yaml line
+// of sums.
+func checkSum(data, sums []byte) (string, error) {
 	sum := sha256.Sum256(data)
 	got := hex.EncodeToString(sum[:])
 	sc := bufio.NewScanner(strings.NewReader(string(sums)))
 	for sc.Scan() {
 		if f := strings.Fields(sc.Text()); len(f) == 2 && f[1] == "manifests.yaml" {
 			if f[0] != got {
-				return nil, "", fmt.Errorf("kueue: manifests.yaml has sha256 %s, SHA256SUMS says %s", got, f[0])
+				return "", fmt.Errorf("kueue: manifests.yaml has sha256 %s, SHA256SUMS says %s", got, f[0])
 			}
-			return data, got, nil
+			return got, nil
 		}
 	}
-	return nil, "", fmt.Errorf("kueue: manifests.yaml is not listed in SHA256SUMS")
+	return "", fmt.Errorf("kueue: manifests.yaml is not listed in SHA256SUMS")
 }
 
 var fairSharingKey = regexp.MustCompile(`(?m)^fairSharing:`)
