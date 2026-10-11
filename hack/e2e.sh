@@ -11,6 +11,10 @@ commit=$(git rev-parse --short HEAD)
 dirty=false
 [ -z "$(git status --porcelain)" ] || dirty=true
 rc=0
+# One Ctrl-C reaches the running suite, which cleans up and exits; the loop
+# must then stop rather than create the next profile's cluster.
+interrupted=
+trap 'interrupted=1' INT
 for p in $profiles; do
   out="$results/$run_id/$p"
   mkdir -p "$out"
@@ -23,6 +27,7 @@ for p in $profiles; do
     echo "e2e: profile $p failed (rc $r)" >&2
     rc=$r
   fi
+  [ -n "$interrupted" ] && { echo "e2e: interrupted, not starting the next profile" >&2; break; }
 done
 echo "results: $results/$run_id"
 exit "$rc"
