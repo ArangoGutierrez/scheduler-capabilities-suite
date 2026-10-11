@@ -36,12 +36,14 @@ func Priority(t Timeline, p PriorityParams) (Verdict, error) {
 		return Verdict{}, fmt.Errorf("no events recorded for job %s", p.HighJob)
 	}
 	var queued []*Pod
+	var byJob [][]*Pod
 	for _, j := range p.QueuedJobs {
 		ps, seen := t.job(j)
 		if !seen {
 			return Verdict{}, fmt.Errorf("no events recorded for job %s", j)
 		}
 		queued = append(queued, ps...)
+		byJob = append(byJob, ps)
 	}
 	submitted := t.submitted(p.HighJob)
 	if submitted.IsZero() {
@@ -52,9 +54,10 @@ func Priority(t Timeline, p PriorityParams) (Verdict, error) {
 		EvidenceSeq:  evidence(high, queued, t.jobSeqs(append([]string{p.HighJob}, p.QueuedJobs...)...)),
 	}
 	hs, ok := nthScheduled(high, 1)
+	// a queued job is ahead when its first pod was scheduled strictly first
 	before := 0
-	for _, q := range queued {
-		if !q.Scheduled.IsZero() && (!ok || q.Scheduled.Before(hs)) {
+	for _, ps := range byJob {
+		if first, sched := nthScheduled(ps, 1); sched && (!ok || first.Before(hs)) {
 			before++
 		}
 	}

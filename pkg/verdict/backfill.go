@@ -47,12 +47,14 @@ func Backfill(t Timeline, p BackfillParams) (Verdict, error) {
 		return Verdict{}, fmt.Errorf("no pods recorded for blocker job %s", missing)
 	}
 	var smalls []*Pod
+	var byJob [][]*Pod
 	for _, j := range p.SmallJobs {
 		ps, seen := t.job(j)
 		if !seen {
 			return Verdict{}, fmt.Errorf("no events recorded for job %s", j)
 		}
 		smalls = append(smalls, ps...)
+		byJob = append(byJob, ps)
 	}
 	var earliest time.Time
 	for _, b := range blockers {
@@ -64,9 +66,10 @@ func Backfill(t Timeline, p BackfillParams) (Verdict, error) {
 		}
 	}
 	tbig, started := nthScheduled(big, p.BigPods)
+	// a short job ran first when its first pod was scheduled before the gang
 	before := 0
-	for _, s := range smalls {
-		if !s.Scheduled.IsZero() && (!started || s.Scheduled.Before(tbig)) {
+	for _, ps := range byJob {
+		if first, sched := nthScheduled(ps, 1); sched && (!started || first.Before(tbig)) {
 			before++
 		}
 	}
