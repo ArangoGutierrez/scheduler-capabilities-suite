@@ -44,7 +44,9 @@ func fusedSites(listing string, fused *regexp.Regexp) ([]string, int) {
 // float64(...); this checks the compiled code, so a new unwrapped product
 // fails here even when no fixture's arithmetic shows the difference.
 var _ = Describe("compiled verdict code", func() {
-	DescribeTable("has no fused multiply-add instruction",
+	// Label toolchain: two compiles take seconds, so make test filters these
+	// out to stay within its 30 s budget and make lint runs them.
+	DescribeTable("has no fused multiply-add instruction", Label("toolchain"),
 		func(env []string, fused string) {
 			goBin, err := exec.LookPath("go")
 			Expect(err).NotTo(HaveOccurred(), "the go command must be on PATH")
