@@ -147,17 +147,24 @@ var _ = Describe("Write", func() {
 		Expect(*got[2].Agree).To(BeFalse())
 	})
 
-	It("gives byte-identical output when rebuilt into another directory", func() {
+	It("writes the committed bytes, in the run directory and when rebuilt into another", func() {
+		// testdata/verdicts.json is the fixture run's vanilla/verdicts.json,
+		// checked by hand: the measurements and evidence_seq asserted field by
+		// field in the spec above, the claims in claimsYAML, gang-control
+		// without documented or agree, map keys sorted, two-space indent
+		want, err := os.ReadFile(filepath.Join("testdata", "verdicts.json"))
+		Expect(err).NotTo(HaveOccurred())
 		run := fixtureRun()
 		other := GinkgoT().TempDir()
 		Expect(report.Write(run, run)).To(Succeed())
 		Expect(report.Write(run, other)).To(Succeed())
-		for _, f := range []string{report.SummaryFile, filepath.Join("vanilla", report.VerdictsFile)} {
-			a, err := os.ReadFile(filepath.Join(run, f))
+		for _, dir := range []string{run, other} {
+			got, err := os.ReadFile(filepath.Join(dir, "vanilla", report.VerdictsFile))
 			Expect(err).NotTo(HaveOccurred())
-			b, err := os.ReadFile(filepath.Join(other, f))
+			Expect(string(got)).To(Equal(string(want)), dir)
+			sum, err := os.ReadFile(filepath.Join(dir, report.SummaryFile))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(b).To(Equal(a), f)
+			Expect(string(sum)).To(Equal(wantSummary), dir)
 		}
 	})
 
