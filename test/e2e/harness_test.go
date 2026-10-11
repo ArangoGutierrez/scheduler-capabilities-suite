@@ -158,6 +158,9 @@ func (p *probe) await(ctx context.Context, cond func() bool, timeout time.Durati
 // verdict and its measurements to the Ginkgo report.
 func (p *probe) finish(ctx context.Context, capability string, params any) verdict.Verdict {
 	windowEnd := time.Now().UTC().Round(0)
+	// The verdict reads only events whose probe label is the capability, so
+	// a probe finished under another name would be judged on no events.
+	Expect(capability).To(Equal(p.name), "probe %s was finished as capability %s", p.name, capability)
 	Expect(env.rec.Flush()).To(Succeed())
 	for _, t := range env.rec.WatchErrors() {
 		Expect(t.Before(p.t0)).To(BeTrue(), "probe %s: a watch failed at %s, so its evidence may be incomplete", p.name, t)
