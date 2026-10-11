@@ -7,6 +7,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -138,14 +139,27 @@ var _ = AfterSuite(func(ctx SpecContext) {
 		Images: images(ctx), Manifests: env.kwokSums, Scheduler: env.installed,
 		ClockOffsetStartS: env.offsetStart, ClockOffsetEndS: offsetEnd, WatchErrors: len(env.rec.WatchErrors()),
 	})).To(Succeed())
-	if len(env.probes) == 0 {
-		return
+	// probes.json is written even when no probe finished ([]), so the
+	// report can tell that profile from a broken run.
+	probes := env.probes
+	if probes == nil {
+		probes = []verdict.Probe{}
 	}
-	writeJSON(filepath.Join(env.profileDir, report.ProbesFile), env.probes)
+	writeJSON(filepath.Join(env.profileDir, report.ProbesFile), probes)
 	claims, err := os.ReadFile(filepath.Join("..", "..", env.profile.ClaimsFile()))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(os.WriteFile(filepath.Join(env.profileDir, report.ClaimsFile), claims, 0o644)).To(Succeed())
-	Expect(report.Write(env.runDir, env.runDir)).To(Succeed())
+	err = report.Write(env.runDir, env.runDir)
+	if len(env.probes) == 0 {
+		// With no probe finished here and none in an earlier profile of the
+		// run, there is nothing to report; the failed or skipped probe
+		// already says why.
+		if !errors.Is(err, report.ErrNoProbes) {
+			Expect(err).NotTo(HaveOccurred())
+		}
+		return
+	}
+	Expect(err).NotTo(HaveOccurred())
 	// The run's verdicts and the offline rebuild must agree.
 	entries, err := report.ProfileVerdicts(env.profileDir, env.profile.Name())
 	Expect(err).NotTo(HaveOccurred())
