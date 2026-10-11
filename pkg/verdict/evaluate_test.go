@@ -42,6 +42,27 @@ var _ = Describe("Evaluate", func() {
 		Expect(err).To(MatchError("teleport: unknown capability"))
 	})
 
+	DescribeTable("rejects malformed parameters before judging",
+		func(capability, params, want string) {
+			_, err := verdict.Evaluate(evs, verdict.Probe{Capability: capability, Params: json.RawMessage(params), WindowEnd: at(50)})
+			Expect(err).To(MatchError(want))
+		},
+		Entry("gang size below 2", "gang", `{"jobs":["gang-a","gang-b"],"size":0,"grace_sec":5}`,
+			"gang: size 0, want 2 or more"),
+		Entry("priority without a high job", "priority", `{"high_job":"","queued_jobs":["q1"]}`,
+			"priority: high_job is empty"),
+		Entry("preemption with no high pods", "preemption", `{"high_job":"high","high_pods":0,"victim_job":"victim","grace_sec":5}`,
+			"preemption: high_pods 0, want 1 or more"),
+		Entry("fair-share with a zero window", "fair-share",
+			`{"tenant_b":"b","entitlement_gpus":16,"job_length_sec":60,"tolerance_sec":5,"capacity_gpus":32,"window_sec":0}`,
+			"fair-share: job_length_sec and window_sec must be positive, tolerance_sec not negative"),
+		Entry("backfill with a negative tolerance", "backfill",
+			`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0"],"small_jobs":["s0"],"tolerance_sec":-1}`,
+			"backfill: tolerance_sec -1 is negative"),
+		Entry("topology with no pods per job", "topology", `{"attempt_jobs":["t1"],"pods_per_job":0,"rack_of":{"n1":"rack-a"}}`,
+			"topology: pods_per_job 0, want 1 or more"),
+	)
+
 	It("rejects a probe without a window end", func() {
 		_, err := verdict.Evaluate(evs, verdict.Probe{Capability: "gang", Params: json.RawMessage(`{}`)})
 		Expect(err).To(MatchError("gang: window_end is missing"))

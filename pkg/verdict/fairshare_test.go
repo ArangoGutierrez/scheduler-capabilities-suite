@@ -147,6 +147,28 @@ var _ = Describe("fairness over time", func() {
 		Expect(v.Measurements["worst_shortfall_gpu_s"]).To(Equal(80.0))
 	})
 
+	// capacity 4, two 10 s windows, tenants a and b each with a 4-GPU Job
+	// from 0 s: demand 40 GPU-s each per window, entitlement 20 each.
+	// Window [0,10): a runs 4 GPUs (40), b nothing: x = (2, 0), J = 4 / (2 * 4)
+	// = 0.5. Window [10,20): a and b run 2 GPUs each (20, 20): x = (1, 1), J = 1.
+	// Sorted J = [0.5, 1]: the even-count median is (0.5 + 1) / 2 = 0.75, and
+	// p5 is J[ceil(0.05 * 2) - 1] = J[0] = 0.5.
+	It("pins the 5th percentile and the even-count median to distinct windows", func() {
+		p := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 4, JobLengthSec: 10,
+			ToleranceSec: 0, CapacityGPUs: 4, WindowSec: 10}
+		tl := verdict.Build(fixtureJobs("fair-share",
+			[]job{{name: "a1", tenant: "a", gpus: 4, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 4, created: 0, end: -1}},
+			tenantPod("a1", "a", 4, 0, 0, 10),
+			pod{name: "a1-1", job: "a1", tenant: "a", gpus: 2, node: "n1", created: 10, scheduled: 10, running: 10, end: 20, endBy: events.Succeeded},
+			pod{name: "b1", job: "b1", tenant: "b", gpus: 2, node: "n2", created: 10, scheduled: 10, running: 10, end: 20, endBy: events.Succeeded},
+		), "fair-share", at(20))
+		v, err := verdict.FairShare(tl, p)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Measurements["windows_used"]).To(Equal(2.0))
+		Expect(v.Measurements["jain_median"]).To(Equal(0.75))
+		Expect(v.Measurements["jain_p5"]).To(Equal(0.5))
+	})
+
 	// capacity 30, one 10 s window, three tenants each with a 30-GPU Job
 	// from 0 s: demand 300 GPU-s each, so water-filling entitles each to 100.
 	// a, b and c run 1, 2 and 3 GPUs for the window: x = 0.1, 0.2, 0.3, and
