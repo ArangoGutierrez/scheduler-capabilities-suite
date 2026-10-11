@@ -173,6 +173,17 @@ var _ = Describe("ClusterQueue", func() {
 	})
 })
 
+var _ = Describe("LocalQueue", func() {
+	It("points at the tenant's ClusterQueue and carries the suite's labels", func() {
+		lq := kueue.LocalQueue(scheduler.Tenant{Name: "a", Namespace: "scs-fair-share-a", EntitlementGPUs: 16})
+		Expect(lq["metadata"]).To(Equal(map[string]any{"name": "lq", "namespace": "scs-fair-share-a", "labels": map[string]any{
+			"app.kubernetes.io/part-of":            "scheduler-capabilities-suite",
+			"scs.arangogutierrez.github.io/tenant": "a",
+		}}))
+		Expect(lq["spec"]).To(Equal(map[string]any{"clusterQueue": "cq-scs-fair-share-a"}))
+	})
+})
+
 var _ = Describe("Job", func() {
 	It("routes the Job to the tenant's LocalQueue with its priority class", func() {
 		j := workload.Job{Name: "high", Namespace: "scs-priority-t1", Probe: "priority", Tenant: "t1",
