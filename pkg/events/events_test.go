@@ -97,4 +97,35 @@ var _ = Describe("events", func() {
 		enc := events.NewEncoder(&bytes.Buffer{})
 		Expect(enc.Encode(e)).To(MatchError(`seq 1: api_time_precision "", want s or us`))
 	})
+
+	It("only ever writes whole lines to the underlying writer", func() {
+		var log writeLog
+		enc := events.NewEncoder(&log)
+		// each line is about 220 bytes (line1 is 217), so 100 lines are about
+		// 22000 bytes: the 4096-byte buffer fills at least 5 times with no Flush
+		for seq := int64(1); seq <= 100; seq++ {
+			Expect(enc.Encode(ev(seq, events.Created))).To(Succeed())
+		}
+		Expect(len(log.writes)).To(BeNumerically(">=", 5))
+		for i, w := range log.writes {
+			Expect(string(w)).To(HaveSuffix("\n"), "write %d", i)
+		}
+		Expect(enc.Flush()).To(Succeed())
+		var all []byte
+		for i, w := range log.writes {
+			Expect(string(w)).To(HaveSuffix("\n"), "write %d", i)
+			all = append(all, w...)
+		}
+		got, err := events.Read(bytes.NewReader(all))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(HaveLen(100))
+	})
 })
+
+// writeLog keeps a copy of every Write call made to it.
+type writeLog struct{ writes [][]byte }
+
+func (w *writeLog) Write(p []byte) (int, error) {
+	w.writes = append(w.writes, append([]byte(nil), p...))
+	return len(p), nil
+}
