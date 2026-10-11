@@ -140,6 +140,9 @@ func Read(r io.Reader) ([]Event, error) {
 		if err := dec.Decode(&e); err != nil {
 			return nil, fmt.Errorf("line %d: %w", line, err)
 		}
+		if len(bytes.TrimSpace(sc.Bytes()[dec.InputOffset():])) > 0 {
+			return nil, fmt.Errorf("line %d: unexpected data after the event", line)
+		}
 		if err := e.Validate(); err != nil {
 			return nil, fmt.Errorf("line %d: %w", line, err)
 		}
