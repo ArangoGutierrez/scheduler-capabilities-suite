@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/apply"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/cluster"
@@ -191,16 +192,8 @@ func (*Profile) Install(ctx context.Context, c *cluster.Cluster) (map[string]str
 		return nil, err
 	}
 	start := time.Now()
-	probe := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "kueue.x-k8s.io/v1beta2", "kind": "ResourceFlavor",
-		"metadata": map[string]any{"name": "scs-webhook-probe"},
-	}}
-	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 8*time.Minute, true, func(ctx context.Context) (bool, error) {
-		_, err := c.Dynamic.Resource(rfGVR).Create(ctx, probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
-		return err == nil, nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("kueue: webhook did not answer: %w", err)
+	if err := waitWebhook(ctx, c.Dynamic, 2*time.Second, 8*time.Minute); err != nil {
+		return nil, err
 	}
 	webhookWait := time.Since(start).Round(time.Second)
 	if _, err := c.Applier.Apply(ctx, []byte(base), time.Minute); err != nil {
@@ -214,6 +207,28 @@ func (*Profile) Install(ctx context.Context, c *cluster.Cluster) (map[string]str
 		"kueue_queueing_strategy": "BestEffortFIFO",
 		"scheduler":               "kube-scheduler from " + cluster.NodeImage + ", behind Kueue admission",
 	}, nil
+}
+
+// waitWebhook polls a dry-run ResourceFlavor create every interval until
+// Kueue's webhook answers it; on timeout it returns the last create error,
+// which names the cause (no endpoints, RBAC, validation).
+func waitWebhook(ctx context.Context, dyn dynamic.Interface, interval, timeout time.Duration) error {
+	probe := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "kueue.x-k8s.io/v1beta2", "kind": "ResourceFlavor",
+		"metadata": map[string]any{"name": "scs-webhook-probe"},
+	}}
+	var last error
+	err := wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
+		_, last = dyn.Resource(rfGVR).Create(ctx, probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+		return last == nil, nil
+	})
+	if err == nil {
+		return nil
+	}
+	if last == nil {
+		last = err
+	}
+	return fmt.Errorf("kueue webhook not ready after %s: %w", timeout, last)
 }
 
 // ClusterQueueName is the ClusterQueue of one tenant of a probe.
