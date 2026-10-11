@@ -78,7 +78,8 @@ func Preemption(t Timeline, p PreemptionParams) (Verdict, error) {
 			}
 			evicted++
 			if !q.Running.IsZero() {
-				lost += float64(q.GPUs) * q.End.Sub(q.Running).Seconds()
+				// rounded before the sum, so no architecture fuses it (fairshare.go)
+				lost += float64(float64(q.GPUs) * q.End.Sub(q.Running).Seconds())
 			}
 			continue
 		}

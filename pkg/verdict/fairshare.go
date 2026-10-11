@@ -185,22 +185,26 @@ func fairnessOverTime(t Timeline, capacityGPUs int64, windowSec float64) fairnes
 	f := fairness{}
 	shortfall := map[string]float64{}
 	for k := 0; float64(k)*windowSec < horizon; k++ {
-		w0 := float64(k) * windowSec
+		// every product that reaches an addition or subtraction is rounded
+		// by an explicit float64 conversion: Go may otherwise fuse it into
+		// a multiply-add (arm64 does, amd64 does not), and a run and its
+		// rebuild on another architecture would differ in the last bit
+		w0 := float64(float64(k) * windowSec)
 		w1 := math.Min(w0+windowSec, horizon)
 		demand, delivered := map[string]float64{}, map[string]float64{}
 		for _, s := range want {
-			if d := s.gpus * overlap(s.from, s.to, w0, w1); d > 0 {
+			if d := float64(s.gpus * overlap(s.from, s.to, w0, w1)); d > 0 {
 				demand[s.tenant] += d
 			}
 		}
 		for _, s := range ran {
-			delivered[s.tenant] += s.gpus * overlap(s.from, s.to, w0, w1)
+			delivered[s.tenant] += float64(s.gpus * overlap(s.from, s.to, w0, w1))
 		}
 		if len(demand) == 0 {
 			f.Excluded++
 			continue
 		}
-		ent := waterFill(float64(capacityGPUs)*(w1-w0), demand)
+		ent := waterFill(float64(float64(capacityGPUs)*(w1-w0)), demand)
 		for tn, e := range ent {
 			shortfall[tn] += math.Max(0, e-delivered[tn])
 		}
@@ -221,7 +225,7 @@ func fairnessOverTime(t Timeline, capacityGPUs int64, windowSec float64) fairnes
 			if e := ent[tn]; e > 0 {
 				x := delivered[tn] / e
 				sum += x
-				sq += x * x
+				sq += float64(x * x)
 				n++
 			}
 		}
