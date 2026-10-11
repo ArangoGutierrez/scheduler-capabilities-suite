@@ -29,6 +29,7 @@ import (
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/recorder"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/report"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
+	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/kueue"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/vanilla"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/verdict"
 )
@@ -43,6 +44,7 @@ func TestE2E(t *testing.T) {
 // profiles maps SCS_PROFILE to a constructor.
 var profiles = map[string]func() scheduler.Profile{
 	"vanilla": func() scheduler.Profile { return vanilla.New() },
+	"kueue":   func() scheduler.Profile { return kueue.New() },
 }
 
 // env is the suite's state, set up in BeforeSuite.

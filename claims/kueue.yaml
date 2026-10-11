@@ -1,0 +1,36 @@
+# Documented claims for the Kueue v0.20.1 profile. Each claim is quoted from
+# the page cited (fetched and checked on 2026-10-10, R1 K3). expected is the
+# outcome the documentation implies under the suite's rule.
+scheduler: kueue
+version: Kueue v0.20.1 on Kubernetes v1.37.0
+claims:
+  gang:
+    claim: 'a Workload is only unsuspended when the quota for all of its pod sets can be reserved at once.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/all_or_nothing/
+    expected: supported
+    mechanism: a Job is admitted only when quota for all its pods is reserved; nothing gang-specific is set on the Job
+  priority:
+    claim: 'StrictFIFO: Workloads are ordered first by priority and then by .metadata.creationTimestamp. BestEffortFIFO: Workloads are ordered the same way as StrictFIFO.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/
+    expected: supported
+    mechanism: WorkloadPriorityClass scs-high (1000) over scs-low (100) through the kueue.x-k8s.io/priority-class label; BestEffortFIFO ClusterQueue without preemption
+  preemption:
+    claim: 'The preemptee belongs to the same ClusterQueue as the preemptor and the preemptee has a lower priority.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/preemption/
+    expected: supported
+    mechanism: ClusterQueue preemption.withinClusterQueue LowerPriority; Kueue evicts a Workload by suspending its Job
+  fair-share:
+    claim: 'Fair Sharing uses preemptions to achieve an equal or weighted share of the borrowable resources between the tenants of a cohort.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/preemption/
+    expected: supported
+    mechanism: one 16-GPU ClusterQueue per tenant in one cohort, reclaimWithinCohort Any, fairSharing in the manager configuration
+  backfill:
+    claim: 'older Workloads that can’t be admitted will not block newer Workloads that fit in the available quota.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/
+    expected: partial
+    mechanism: BestEffortFIFO ClusterQueue; no documented reservation for a waiting Workload, so short jobs may pass it and delay it
+  topology:
+    claim: 'requires scheduling all pods on nodes within the same topology domain corresponding to the topology level indicated by the annotation value'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/topology_aware_scheduling/
+    expected: supported
+    mechanism: pod template annotation kueue.x-k8s.io/podset-required-topology with the rack label; Topology block, rack, hostname; ResourceFlavor gpu with topologyName
