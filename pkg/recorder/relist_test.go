@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -46,6 +47,55 @@ var _ = Describe("Recorder relists", func() {
 		// one list for the initial sync, one for the relist
 		Eventually(func() int32 { return atomic.LoadInt32(&podLists) }, 10*time.Second).Should(Equal(int32(2)))
 		Eventually(r.WatchErrors, 10*time.Second).Should(HaveLen(1))
+	}, SpecTimeout(30*time.Second))
+
+	// A 1.37 apiserver serves watch-list (WatchListClient is on by default),
+	// so a relist is a Watch with SendInitialEvents, not a List. This drives
+	// the real client-go reflector in that mode: a client without the opt-out
+	// makes the initial sync a SendInitialEvents watch that ends with the
+	// initial-events-end bookmark, and the reflector keeps reading that same
+	// watch. When it ends with 410 Expired, the reflector relists with a
+	// second SendInitialEvents watch. So: no List, two initial-events
+	// watches, no plain watch, and one recorded relist (the first watch is
+	// the initial sync, before synced).
+	It("records a watch-list relist after the steady watch ends with 410 Expired", func(ctx SpecContext) {
+		r := New(fake.NewClientset(), nil, io.Discard, Options{RunID: "r1", Now: func() time.Time { return t0 }})
+		var lists, initialWatches, plainWatches int32
+		release := make(chan struct{})
+		lw := &cache.ListWatch{
+			ListWithContextFunc: func(context.Context, metav1.ListOptions) (runtime.Object, error) {
+				atomic.AddInt32(&lists, 1)
+				return &corev1.PodList{ListMeta: metav1.ListMeta{ResourceVersion: "1"}}, nil
+			},
+			WatchFuncWithContext: func(_ context.Context, o metav1.ListOptions) (watch.Interface, error) {
+				fw := watch.NewFakeWithChanSize(4, false)
+				if o.SendInitialEvents == nil || !*o.SendInitialEvents {
+					atomic.AddInt32(&plainWatches, 1)
+					return fw, nil
+				}
+				n := atomic.AddInt32(&initialWatches, 1)
+				fw.Action(watch.Bookmark, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "5",
+					Annotations: map[string]string{metav1.InitialEventsAnnotationKey: "true"}}})
+				if n == 1 {
+					go func() {
+						<-release
+						fw.Error(&metav1.Status{Status: metav1.StatusFailure, Code: 410, Reason: metav1.StatusReasonExpired, Message: "too old resource version"})
+					}()
+				}
+				return fw, nil
+			},
+		}
+		// struct{}{} has no IsWatchListSemanticsUnSupported, so the reflector uses watch-list
+		inf := r.informer(struct{}{}, &corev1.Pod{}, lw)
+		go inf.RunWithContext(ctx)
+		Eventually(inf.HasSynced, 10*time.Second).Should(BeTrue())
+		r.synced.Store(true) // as Start does once every informer has synced
+		Expect(r.WatchErrors()).To(BeEmpty())
+		close(release)
+		Eventually(func() int32 { return atomic.LoadInt32(&initialWatches) }, 10*time.Second).Should(Equal(int32(2)))
+		Eventually(r.WatchErrors, 10*time.Second).Should(Equal([]time.Time{t0}))
+		Expect(atomic.LoadInt32(&lists)).To(Equal(int32(0)))
+		Expect(atomic.LoadInt32(&plainWatches)).To(Equal(int32(0)))
 	}, SpecTimeout(30*time.Second))
 })
 
