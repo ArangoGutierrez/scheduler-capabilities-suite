@@ -1,12 +1,16 @@
 package kueue_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/apply"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/claims"
@@ -87,6 +91,36 @@ var _ = Describe("AddFairSharing", func() {
 	It("refuses a manifest without the manager ConfigMap", func() {
 		objs := decode("apiVersion: v1\nkind: ConfigMap\nmetadata: {name: other, namespace: kueue-system}\n")
 		Expect(kueue.AddFairSharing(objs)).To(MatchError("kueue: manifest has no kueue-manager-config ConfigMap"))
+	})
+})
+
+var _ = Describe("WaitWebhook", func() {
+	It("returns once a dry-run ResourceFlavor create is answered", func(ctx SpecContext) {
+		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+		calls := 0
+		dyn.PrependReactor("create", "resourceflavors", func(a k8stesting.Action) (bool, runtime.Object, error) {
+			calls++
+			if calls < 3 {
+				return true, nil, errors.New("no endpoints available for service kueue-webhook-service")
+			}
+			return true, a.(k8stesting.CreateAction).GetObject(), nil
+		})
+		Expect(kueue.WaitWebhook(ctx, dyn, 10*time.Millisecond, 5*time.Second)).To(Succeed())
+		Expect(calls).To(Equal(3))
+	})
+	It("names the last error when the webhook never answers", func(ctx SpecContext) {
+		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+		calls := 0
+		dyn.PrependReactor("create", "resourceflavors", func(k8stesting.Action) (bool, runtime.Object, error) {
+			calls++
+			if calls == 1 {
+				return true, nil, errors.New("no endpoints available for service kueue-webhook-service")
+			}
+			return true, nil, errors.New(`admission webhook "vresourceflavor.kb.io" denied the request: forbidden`)
+		})
+		err := kueue.WaitWebhook(ctx, dyn, 10*time.Millisecond, 200*time.Millisecond)
+		Expect(err).To(MatchError(`kueue webhook not ready after 200ms: admission webhook "vresourceflavor.kb.io" denied the request: forbidden`))
+		Expect(calls).To(BeNumerically(">", 1))
 	})
 })
 
