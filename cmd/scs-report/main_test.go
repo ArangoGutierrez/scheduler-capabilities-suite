@@ -26,10 +26,14 @@ var _ = Describe("run", func() {
 
 	It("with -out, writes the committed expected summary there and nothing into the run directory", func() {
 		// testdata/run is pkg/report's fixture run; testdata/summary.md is that
-		// package's hand-written wantSummary
+		// package's hand-written wantSummary. The run is copied first, so a
+		// regression that ignores -out writes into the copy, never into the
+		// committed fixture.
+		runDir := GinkgoT().TempDir()
+		Expect(os.CopyFS(runDir, os.DirFS("testdata/run"))).To(Succeed())
 		out := GinkgoT().TempDir()
 		var stderr bytes.Buffer
-		Expect(run([]string{"-out", out, "testdata/run"}, &stderr)).To(Equal(0))
+		Expect(run([]string{"-out", out, runDir}, &stderr)).To(Equal(0))
 		Expect(stderr.String()).To(BeEmpty())
 		want, err := os.ReadFile("testdata/summary.md")
 		Expect(err).NotTo(HaveOccurred())
@@ -37,8 +41,8 @@ var _ = Describe("run", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(got)).To(Equal(string(want)))
 		Expect(filepath.Join(out, "vanilla", "verdicts.json")).To(BeAnExistingFile())
-		Expect("testdata/run/summary.md").NotTo(BeAnExistingFile())
-		Expect("testdata/run/vanilla/verdicts.json").NotTo(BeAnExistingFile())
+		Expect(filepath.Join(runDir, "summary.md")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(runDir, "vanilla", "verdicts.json")).NotTo(BeAnExistingFile())
 	})
 
 	It("exits 1 and names the problem when the run directory has no manifest", func() {
