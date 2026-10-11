@@ -3,6 +3,7 @@ package cluster
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -28,13 +29,15 @@ type fakeProvider struct {
 	createOK  bool
 	deleteErr error
 	created   []string
+	opts      []kindcluster.CreateOption
 	deleted   []string
 	deletedKC []string
 }
 
 func (f *fakeProvider) List() ([]string, error) { return f.existing, nil }
-func (f *fakeProvider) Create(name string, _ ...kindcluster.CreateOption) error {
+func (f *fakeProvider) Create(name string, opts ...kindcluster.CreateOption) error {
 	f.created = append(f.created, name)
+	f.opts = opts
 	if f.createOK {
 		return nil
 	}
@@ -46,6 +49,23 @@ func (f *fakeProvider) Delete(name, kubeconfig string) error {
 	return f.deleteErr
 }
 func (f *fakeProvider) CollectLogs(_, _ string) error { return nil }
+
+// kindOptions applies opts to a fresh kind ClusterOptions and returns it.
+// kind keeps that type internal, so this reaches it by reflection: each
+// CreateOption is a func taking *ClusterOptions. kind is pinned (v0.33.0);
+// an upgrade that renames these fields makes the spec fail, never pass.
+func kindOptions(opts []kindcluster.CreateOption) reflect.Value {
+	Expect(opts).NotTo(BeEmpty())
+	var o reflect.Value
+	for _, opt := range opts {
+		fn := reflect.ValueOf(opt)
+		if !o.IsValid() {
+			o = reflect.New(fn.Type().In(0).Elem())
+		}
+		Expect(fn.Call([]reflect.Value{o})[0].IsNil()).To(BeTrue())
+	}
+	return o.Elem()
+}
 
 var _ = Describe("Create", func() {
 	It("refuses a cluster name that already exists, and creates or deletes nothing", func() {
@@ -81,6 +101,23 @@ var _ = Describe("Create", func() {
 		_, err := Create(p, SuiteConfig("scs-vanilla", kc))
 		Expect(err).To(MatchError("stat " + kc + ": no such file or directory\ndelete kind cluster \"scs-vanilla\": fake: delete failed"))
 		Expect(p.deleted).To(Equal([]string{"scs-vanilla"}))
+	})
+})
+
+var _ = Describe("Create's kind options", func() {
+	It("passes kind the pinned node image, the feature gates, the runtime config and the kubeconfig path", func() {
+		p := &fakeProvider{}
+		_, err := Create(p, SuiteConfig("scs-vanilla", "/tmp/kc"))
+		Expect(err).To(MatchError(`create kind cluster "scs-vanilla": fake: no docker`))
+		o := kindOptions(p.opts)
+		Expect(o.FieldByName("KubeconfigPath").String()).To(Equal("/tmp/kc"))
+		Expect(o.FieldByName("Config").IsNil()).To(BeFalse())
+		cfg := o.FieldByName("Config").Elem()
+		nodes := cfg.FieldByName("Nodes")
+		Expect(nodes.Len()).To(Equal(1))
+		Expect(nodes.Index(0).FieldByName("Image").String()).To(Equal("kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"))
+		Expect(cfg.FieldByName("FeatureGates").Interface()).To(Equal(map[string]bool{"GenericWorkload": true, "TopologyAwareWorkloadScheduling": true}))
+		Expect(cfg.FieldByName("RuntimeConfig").Interface()).To(Equal(map[string]string{"scheduling.k8s.io/v1beta1": "true"}))
 	})
 })
 
