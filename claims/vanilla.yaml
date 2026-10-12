@@ -1,6 +1,7 @@
 # Documented claims for the vanilla profile: kube-scheduler 1.37 with the
 # Workload API. Each claim is quoted from the page cited (fetched and
-# checked on 2026-10-10, R1 K3), or states that no mechanism is documented.
+# checked on 2026-10-10, R1 K3; every quote re-checked on 2026-10-12), or
+# states that no mechanism is documented.
 # expected is the outcome the documentation implies under the suite's rule.
 scheduler: vanilla
 version: Kubernetes v1.37.0 (kindest/node v1.37.0)
@@ -26,10 +27,10 @@ claims:
     expected: not_supported
     mechanism: tenants are namespaces with no quota and no policy
   backfill:
-    claim: 'No backfill or reservation mechanism is documented for kube-scheduler 1.37 (the scheduling and workload pages were searched on 2026-10-10).'
-    citation: https://kubernetes.io/docs/concepts/scheduling-eviction/
-    expected: not_supported
-    mechanism: plain Jobs; the large job is a PodGroup gang
+    claim: 'If it cannot find enough placements to satisfy the minCount requirement, none of the Pods are scheduled. Instead, they are moved to the unschedulable queue to wait for cluster resources to free up, allowing other workloads to be scheduled in the meantime.'
+    citation: https://kubernetes.io/docs/concepts/scheduling-eviction/gang-scheduling/
+    expected: partial
+    mechanism: plain Jobs; the large job is a PodGroup gang; no reservation for a waiting PodGroup is documented (podgroup-scheduling avoids groups that "reserve cluster capacity while waiting"), so short jobs may pass it and delay it
   topology:
     claim: 'allows finding the optimal placement for the considered PodGroup, guaranteeing that all pods will be collocated within the same topology domain.'
     citation: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-aware-scheduling/
