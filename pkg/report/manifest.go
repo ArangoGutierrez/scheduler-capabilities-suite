@@ -35,10 +35,11 @@ type ProfileRun struct {
 	Scheduler     map[string]string `json:"scheduler"`
 	// ClockOffset*S is the API server's creation timestamp minus the host's
 	// clock, in seconds; the server stamps whole seconds, so |offset| < 1 is
-	// as close as this can tell.
-	ClockOffsetStartS float64 `json:"clock_offset_start_s"`
-	ClockOffsetEndS   float64 `json:"clock_offset_end_s"`
-	WatchErrors       int     `json:"watch_errors"`
+	// as close as this can tell. ClockOffsetEndS is nil, and absent from the
+	// file, when the end-of-run check measured nothing.
+	ClockOffsetStartS float64  `json:"clock_offset_start_s"`
+	ClockOffsetEndS   *float64 `json:"clock_offset_end_s,omitempty"`
+	WatchErrors       int      `json:"watch_errors"`
 }
 
 // MergeManifest writes runDir/manifest.json with base's run-level fields

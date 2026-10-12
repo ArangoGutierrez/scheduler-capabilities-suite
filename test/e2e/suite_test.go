@@ -144,12 +144,13 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	claims, err := os.ReadFile(filepath.Join("..", "..", env.profile.ClaimsFile()))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(os.WriteFile(filepath.Join(env.profileDir, report.ClaimsFile), claims, 0o644)).To(Succeed())
-	// A failed create leaves no measurement and fails here. A failed delete
-	// after a good measurement is held until the manifest, the report and
-	// the rebuild check are done, then fails the suite.
+	// A failed clock check is held until the manifest, the report and the
+	// rebuild check are done, then fails the suite. A failed create measured
+	// nothing, so the manifest has no end offset.
 	offsetEnd, measured, clockErr := cluster.ClockOffset(ctx, env.cluster.Clientset)
-	if !measured {
-		Expect(clockErr).NotTo(HaveOccurred())
+	var offsetEndS *float64
+	if measured {
+		offsetEndS = &offsetEnd
 	}
 	// The manifest comes before report.Write, which reads the run ID from it.
 	cfg := cluster.SuiteConfig(env.cluster.Name, env.cluster.Kubeconfig)
@@ -162,7 +163,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 		Start: env.start, End: time.Now().UTC(), Cluster: env.cluster.Name,
 		FeatureGates: cfg.FeatureGates, RuntimeConfig: cfg.RuntimeConfig,
 		Images: images(ctx), Manifests: env.kwokSums, Scheduler: env.installed,
-		ClockOffsetStartS: env.offsetStart, ClockOffsetEndS: offsetEnd, WatchErrors: len(env.rec.WatchErrors()),
+		ClockOffsetStartS: env.offsetStart, ClockOffsetEndS: offsetEndS, WatchErrors: len(env.rec.WatchErrors()),
 	})).To(Succeed())
 	err = report.Write(env.runDir, env.runDir)
 	if len(env.probes) == 0 {
