@@ -75,5 +75,7 @@ var _ = Describe("claims", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(f.Scheduler).To(Equal("vanilla"))
 		Expect(f.Claims["preemption"].Expected).To(Equal(verdict.Supported))
+		Expect(f.Claims["backfill"].Expected).To(Equal(verdict.Partial))
+		Expect(f.Claims["backfill"].Citation).To(Equal("https://kubernetes.io/docs/concepts/scheduling-eviction/gang-scheduling/"))
 	})
 })

@@ -208,5 +208,7 @@ var _ = Describe("claims", func() {
 		f, err := claims.Load("../../../claims/kueue.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(f.Scheduler).To(Equal("kueue"))
+		Expect(f.Claims["fair-share"].Citation).To(Equal("https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/"))
+		Expect(f.Claims["priority"].Claim).To(ContainSubstring("creationTimestamp. [...] BestEffortFIFO"))
 	})
 })
