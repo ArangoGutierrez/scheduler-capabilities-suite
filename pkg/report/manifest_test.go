@@ -30,6 +30,34 @@ var _ = Describe("MergeManifest", func() {
 		Expect(m.Profiles["kueue"].Start).To(Equal(t0.Add(time.Hour)))
 	})
 
+	// profileKeys merges pr as vanilla's entry and returns the keys
+	// manifest.json holds for it.
+	profileKeys := func(pr report.ProfileRun) map[string]any {
+		run := GinkgoT().TempDir()
+		Expect(report.MergeManifest(run, base, "vanilla", pr)).To(Succeed())
+		data, err := os.ReadFile(filepath.Join(run, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		var m struct {
+			Profiles map[string]map[string]any `json:"profiles"`
+		}
+		Expect(json.Unmarshal(data, &m)).To(Succeed())
+		return m.Profiles["vanilla"]
+	}
+
+	It("omits the end clock offset when the end check measured nothing", func() {
+		keys := profileKeys(report.ProfileRun{Cluster: "scs-vanilla"})
+		Expect(keys).To(HaveKeyWithValue("clock_offset_start_s", 0.0))
+		Expect(keys).NotTo(HaveKey("clock_offset_end_s"))
+	})
+
+	It("keeps a measured end clock offset, zero included", func() {
+		for raw, want := range map[string]float64{`{"clock_offset_end_s":-0.4}`: -0.4, `{"clock_offset_end_s":0}`: 0} {
+			var pr report.ProfileRun
+			Expect(json.Unmarshal([]byte(raw), &pr)).To(Succeed())
+			Expect(profileKeys(pr)).To(HaveKeyWithValue("clock_offset_end_s", want), raw)
+		}
+	})
+
 	It("refuses a manifest from another run", func() {
 		run := GinkgoT().TempDir()
 		Expect(report.MergeManifest(run, base, "vanilla", report.ProfileRun{})).To(Succeed())
