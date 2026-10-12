@@ -83,6 +83,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	Expect(ok).To(BeTrue(), "SCS_PROFILE=%q is not a known profile", name)
 	env.runID = os.Getenv("SCS_RUN_ID")
 	Expect(env.runID).NotTo(BeEmpty(), "SCS_RUN_ID is empty")
+	Expect(os.Getenv("SCS_GIT_COMMIT")).NotTo(BeEmpty(), "SCS_GIT_COMMIT is empty: run the suite through make e2e, which records the commit")
 	results := os.Getenv("SCS_RESULTS")
 	Expect(filepath.IsAbs(results)).To(BeTrue(), "SCS_RESULTS=%q must be an absolute path", results)
 	env.profile = mk()

@@ -6,10 +6,13 @@
 set -u
 profiles=$1 run_id=$2 results=$3 filter=${4:-}
 [ "$profiles" = all ] && profiles="vanilla kueue"
-mkdir -p "$results" && results=$(cd "$results" && pwd)
-commit=$(git rev-parse --short HEAD)
+# A run that cannot name its commit cannot be tied to its code: stop before
+# anything is created.
+commit=$(git rev-parse --short HEAD) || { echo "e2e: git cannot read this checkout (copy it as a git clone)" >&2; exit 2; }
+status=$(git status --porcelain --untracked-files=normal) || { echo "e2e: git cannot read this checkout (copy it as a git clone)" >&2; exit 2; }
 dirty=false
-[ -z "$(git status --porcelain --untracked-files=normal)" ] || dirty=true
+[ -z "$status" ] || dirty=true
+mkdir -p "$results" && results=$(cd "$results" && pwd)
 rc=0
 # One Ctrl-C reaches the running suite, which cleans up and exits; the loop
 # must then stop rather than create the next profile's cluster.
