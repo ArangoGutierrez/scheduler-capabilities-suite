@@ -166,10 +166,17 @@ func pause(ctx context.Context, d time.Duration) {
 	}
 }
 
-// finish closes the probe's evidence window, evaluates its verdict from
-// the recorded file (the same path scs-report takes), and attaches the
-// verdict and its measurements to the Ginkgo report.
+// settle is how long finish waits before it closes the evidence window. The
+// harness reads pod state by List, while the recorder sees it through
+// watches, so the transition that ended a probe must reach the recorder
+// before the window closes.
+const settle = 2 * time.Second
+
+// finish waits settle, closes the probe's evidence window, evaluates its
+// verdict from the recorded file (the same path scs-report takes), and
+// attaches the verdict and its measurements to the Ginkgo report.
 func (p *probe) finish(ctx context.Context, capability string, params any) verdict.Verdict {
+	pause(ctx, settle)
 	windowEnd := time.Now().UTC().Round(0)
 	// The verdict reads only events whose probe label is the capability, so
 	// a probe finished under another name would be judged on no events.
