@@ -20,6 +20,13 @@ interrupted=
 trap 'interrupted=1' INT
 for p in $profiles; do
   out="$results/$run_id/$p"
+  # tee and Ginkgo would overwrite an earlier run's log and report before
+  # the suite's own guard runs.
+  if [ -e "$out" ]; then
+    echo "e2e: $out exists; choose another RUN_ID" >&2
+    rc=2
+    continue
+  fi
   mkdir -p "$out"
   args=(--no-color -v --timeout=60m --json-report=ginkgo-report.json --output-dir="$out")
   [ -n "$filter" ] && args+=(--label-filter="$filter")
