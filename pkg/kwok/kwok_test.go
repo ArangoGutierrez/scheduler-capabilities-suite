@@ -54,7 +54,8 @@ var _ = Describe("checkSum", func() {
 	})
 	It("rejects bytes that changed", func() {
 		_, err := checkSum("a.yaml", []byte("fob"), sums)
-		Expect(err).To(MatchError(ContainSubstring("kwok: a.yaml has sha256 ")))
+		// 133b82c4... is sha256("fob"), computed with shasum -a 256
+		Expect(err).To(MatchError("kwok: a.yaml has sha256 133b82c4f4f41646b29771b181dbb72f00e1b6a56e614f159e8cc4956983e04f, SHA256SUMS says 2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"))
 	})
 	It("rejects a file SHA256SUMS does not list", func() {
 		_, err := checkSum("b.yaml", []byte("foo"), sums)
