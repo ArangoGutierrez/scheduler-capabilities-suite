@@ -2,3 +2,5 @@
 /results/
 # kubeconfigs the suite writes
 *.kubeconfig
+# test binaries go test -c and ginkgo build beside each package
+*.test
