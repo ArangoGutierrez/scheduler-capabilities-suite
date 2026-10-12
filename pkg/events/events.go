@@ -125,8 +125,9 @@ func (enc *Encoder) Flush() error {
 
 const maxLineBytes = 1 << 20
 
-// Read parses JSON Lines from r. Every line must be a valid Event, and seq
-// must run 1, 2, 3 and so on without a gap.
+// Read parses JSON Lines from r. Every line must be a valid Event, seq
+// must run 1, 2, 3 and so on without a gap, and observed_at must never fall
+// (a host clock that steps back would shift every duration).
 func Read(r io.Reader) ([]Event, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
@@ -148,6 +149,10 @@ func Read(r io.Reader) ([]Event, error) {
 		}
 		if want := int64(len(out) + 1); e.Seq != want {
 			return nil, fmt.Errorf("line %d: seq %d, want %d", line, e.Seq, want)
+		}
+		if n := len(out); n > 0 && e.ObservedAt.Before(out[n-1].ObservedAt) {
+			return nil, fmt.Errorf("line %d: observed_at %s is before line %d's %s",
+				line, e.ObservedAt.Format(time.RFC3339Nano), line-1, out[n-1].ObservedAt.Format(time.RFC3339Nano))
 		}
 		out = append(out, e)
 	}
