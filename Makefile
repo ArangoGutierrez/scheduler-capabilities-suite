@@ -9,7 +9,7 @@ RUN_ID ?= $(shell date -u +%Y%m%dT%H%M%SZ)-$(shell git rev-parse --short HEAD 2>
 
 ## test: every unit suite (no cluster); the e2e suite needs one and is skipped here
 test:
-	$(GO) tool ginkgo --no-color -r --skip-package=e2e --label-filter='!toolchain'
+	$(GO) tool ginkgo --no-color -r --skip-package=e2e --label-filter='!toolchain && !live'
 
 ## lint: go vet, gofmt, and the verdict package's toolchain specs (no fused multiply-add)
 lint:
