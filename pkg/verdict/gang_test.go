@@ -27,6 +27,16 @@ var _ = Describe("Pods", func() {
 		Expect(pods[0].Seqs).To(Equal([]int64{1, 2, 3}))
 	})
 
+	It("keeps the first terminal transition when a second follows", func() {
+		p := done("v0", "victim", "n1", 0, 1, 2, 12)
+		p.later = []step{{at: 12.5, tr: events.Deleted}}
+		pods := verdict.Pods(fixture("preemption", p), "preemption", at(100))
+		Expect(pods).To(HaveLen(1))
+		Expect(pods[0].End).To(Equal(at(12)))
+		Expect(pods[0].EndBy).To(Equal(events.Succeeded))
+		Expect(pods[0].Seqs).To(HaveLen(5))
+	})
+
 	It("keeps only the named probe's Pod events", func() {
 		evs := append(fixture("gang", done("a0", "gang-a", "n1", 0, 1, 2, 22)),
 			fixture("priority", done("x", "low", "n1", 0, 1, 2, 3))...)

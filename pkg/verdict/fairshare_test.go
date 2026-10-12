@@ -103,6 +103,14 @@ var _ = Describe("FairShare", func() {
 		Expect(v.Measurements["b_max_gpus_by_check"]).To(Equal(16.0))
 	})
 
+	It("fails, as a harness error, on a tenant B that matches no Job", func() {
+		p := params
+		p.TenantB = "B"
+		tl := verdict.Build(fixture("fair-share", append(aPods(60.5, 60.5, 120.5, 120.5), bPods(10.5, 10.5)...)...), "fair-share", at(200))
+		_, err := verdict.FairShare(tl, p)
+		Expect(err).To(MatchError("no submission recorded for tenant B"))
+	})
+
 	It("records how long after the first submission B arrived", func() {
 		pods := append(aPods(), tenantPod("b0", "b", 8, 23.5, 24, 84), tenantPod("b1", "b", 8, 23.5, 24, 84))
 		tl := verdict.Build(fixture("fair-share", pods...), "fair-share", at(200))
@@ -153,6 +161,69 @@ var _ = Describe("fairness over time", func() {
 		Expect(v.Measurements["jain_median"]).To(Equal(0.5))
 		Expect(v.Measurements["windows_used"]).To(Equal(3.0))
 		Expect(v.Measurements["worst_shortfall_gpu_s"]).To(Equal(80.0))
+	})
+
+	// capacity 8, 10 s windows, horizon 30 s. Tenant a's 4-GPU Job is
+	// created at 0 and recorded as ended at 10 s (its pod runs 0 to 10);
+	// tenant b's 4-GPU pod runs 0 to 30. Window [0,10): x = (1, 1), J = 1.
+	// Windows [10,20) and [20,30): a's demand ended with its Job, so only b
+	// has demand: excluded from J, and b gets all it wants. Median 1, one
+	// window used, no shortfall. Reading a's demand to the horizon instead
+	// would give J = 0.5 in those windows and a shortfall of 80 GPU-s.
+	It("ends a tenant's demand when its Job's end is recorded", func() {
+		p := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 4, JobLengthSec: 10,
+			ToleranceSec: 0, CapacityGPUs: 8, WindowSec: 10}
+		tl := verdict.Build(fixtureJobs("fair-share",
+			[]job{{name: "a1", tenant: "a", gpus: 4, created: 0, end: 10}, {name: "b1", tenant: "b", gpus: 4, created: 0, end: -1}},
+			tenantPod("a1", "a", 4, 0, 0, 10), tenantPod("b1", "b", 4, 0, 0, 30),
+		), "fair-share", at(30))
+		v, err := verdict.FairShare(tl, p)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Measurements["jain_median"]).To(Equal(1.0))
+		Expect(v.Measurements["windows_used"]).To(Equal(1.0))
+		Expect(v.Measurements["worst_shortfall_gpu_s"]).To(Equal(0.0))
+	})
+
+	// capacity 4, 10 s windows, horizon 20 s. Tenant a's 2-GPU Job is
+	// created at 0 and its pod runs 5 to 20; tenant b's 2-GPU Job is created
+	// at 10 and runs 10 to 20. Window [0,10): only a has demand (20 GPU-s),
+	// entitled to all 20, delivered 10: excluded from J, yet a falls 10
+	// short. Window [10,20): x = (1, 1), J = 1. The worst shortfall is a's
+	// 10 GPU-s, from the window J leaves out.
+	It("counts the shortfall of a window with one tenant's demand", func() {
+		p := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 2, JobLengthSec: 10,
+			ToleranceSec: 0, CapacityGPUs: 4, WindowSec: 10}
+		tl := verdict.Build(fixtureJobs("fair-share",
+			[]job{{name: "a1", tenant: "a", gpus: 2, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 2, created: 10, end: -1}},
+			tenantPod("a1", "a", 2, 0, 5, -1), tenantPod("b1", "b", 2, 10, 10, -1),
+		), "fair-share", at(20))
+		v, err := verdict.FairShare(tl, p)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Measurements["worst_shortfall_gpu_s"]).To(Equal(10.0))
+		Expect(v.Measurements["windows_used"]).To(Equal(1.0))
+		Expect(v.Measurements["windows_excluded"]).To(Equal(1.0))
+	})
+
+	// capacity 4, 10 s windows, horizon 30 s. Tenants a and b each have a
+	// 2-GPU Job from 0 s that never ends, and run 2 GPUs in [0,10) and in
+	// [20,30), nothing in [10,20). Windows 1 and 3: x = (1, 1), J = 1.
+	// Window 2: both want capacity and neither gets any, so Jain's index is
+	// 0/0; the window is excluded rather than turning the percentiles NaN.
+	It("excludes a window where tenants want capacity and none is delivered", func() {
+		p := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 2, JobLengthSec: 10,
+			ToleranceSec: 0, CapacityGPUs: 4, WindowSec: 10}
+		tl := verdict.Build(fixtureJobs("fair-share",
+			[]job{{name: "a1", tenant: "a", gpus: 2, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 2, created: 0, end: -1}},
+			tenantPod("a1", "a", 2, 0, 0, 10), tenantPod("b1", "b", 2, 0, 0, 10),
+			pod{name: "a1-1", job: "a1", tenant: "a", gpus: 2, node: "n1", created: 20, scheduled: 20, running: 20, end: 30, endBy: events.Succeeded},
+			pod{name: "b1-1", job: "b1", tenant: "b", gpus: 2, node: "n2", created: 20, scheduled: 20, running: 20, end: 30, endBy: events.Succeeded},
+		), "fair-share", at(30))
+		v, err := verdict.FairShare(tl, p)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Measurements["windows_used"]).To(Equal(2.0))
+		Expect(v.Measurements["windows_excluded"]).To(Equal(1.0))
+		Expect(v.Measurements["jain_median"]).To(Equal(1.0))
+		Expect(v.Measurements["jain_p5"]).To(Equal(1.0))
 	})
 
 	// capacity 4, two 10 s windows, tenants a and b each with a 4-GPU Job

@@ -22,6 +22,15 @@ type pod struct {
 	node                             string
 	created, scheduled, running, end float64
 	endBy                            events.Transition
+	later                            []step
+}
+
+// step is one more transition of a pod, at a second after t0: a second
+// terminal transition after end, as the recorder emits for a pod that
+// completes and is then deleted.
+type step struct {
+	at float64
+	tr events.Transition
 }
 
 // job describes one fixture Job object: its tenant, total GPUs, and the
@@ -65,6 +74,9 @@ func fixtureJobs(probe string, jobs []job, pods ...pod) []events.Event {
 		}
 		if p.end >= 0 {
 			items = append(items, item{at: p.end, p: p, tr: p.endBy})
+		}
+		for _, s := range p.later {
+			items = append(items, item{at: s.at, p: p, tr: s.tr})
 		}
 	}
 	// stable insertion sort by time keeps same-time items in input order
