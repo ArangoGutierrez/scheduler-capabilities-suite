@@ -34,6 +34,12 @@ func (p BackfillParams) validate() error {
 // without delaying it. The gang starts when its BigPods-th pod is
 // scheduled; its earliest possible start is the last blocker pod's end. A
 // short job or gang seen only as a Job (a queue still held it) never ran.
+// Only the time short jobs held nodes past the earliest start counts
+// against the tolerance: a short pod scheduled before the gang started
+// holds its node until it ends (capped at the gang's start), and
+// short_hold_s is the longest such hold past the earliest start (0 when
+// none reaches past it). The rest of the gang's delay is the scheduler's
+// own start latency, recorded as big_start_after_free_s.
 func Backfill(t Timeline, p BackfillParams) (Verdict, error) {
 	if err := p.validate(); err != nil {
 		return Verdict{}, err
@@ -77,10 +83,24 @@ func Backfill(t Timeline, p BackfillParams) (Verdict, error) {
 		Measurements: map[string]float64{"small_before_big": float64(before)},
 		EvidenceSeq:  evidence(big, blockers, smalls, t.jobSeqs(append(append([]string{p.BigJob}, p.BlockerJobs...), p.SmallJobs...)...)),
 	}
-	delay := 0.0
+	delay, hold := 0.0, 0.0
 	if started {
 		delay = tbig.Sub(earliest).Seconds()
+		for _, s := range smalls {
+			if s.Scheduled.IsZero() || !s.Scheduled.Before(tbig) {
+				continue
+			}
+			end := s.End
+			if end.IsZero() || end.After(tbig) {
+				end = tbig
+			}
+			if h := end.Sub(earliest).Seconds(); h > hold {
+				hold = h
+			}
+		}
 		v.Measurements["big_start_delay_s"] = delay
+		v.Measurements["short_hold_s"] = hold
+		v.Measurements["big_start_after_free_s"] = delay - hold
 	}
 	switch {
 	case before == 0 && started:
@@ -92,12 +112,12 @@ func Backfill(t Timeline, p BackfillParams) (Verdict, error) {
 	case !started:
 		v.Outcome = Partial
 		v.Reason = fmt.Sprintf("%d short jobs ran, and the gang never started", before)
-	case delay > p.ToleranceSec:
+	case hold > p.ToleranceSec:
 		v.Outcome = Partial
-		v.Reason = fmt.Sprintf("%d short jobs ran before the gang, which started %s s after its earliest possible start", before, fmtSec(delay))
+		v.Reason = fmt.Sprintf("%d short jobs ran before the gang and held nodes %s s past its earliest possible start (tolerance %s s); it started %s s after that start", before, fmtSec(hold), fmtSec(p.ToleranceSec), fmtSec(delay))
 	default:
 		v.Outcome = Supported
-		v.Reason = fmt.Sprintf("%d short jobs ran before the gang, which started %s s after its earliest possible start", before, fmtSec(delay))
+		v.Reason = fmt.Sprintf("%d short jobs ran before the gang and held nodes %s s past its earliest possible start (tolerance %s s); it started %s s after that start", before, fmtSec(hold), fmtSec(p.ToleranceSec), fmtSec(delay))
 	}
 	return v, nil
 }
