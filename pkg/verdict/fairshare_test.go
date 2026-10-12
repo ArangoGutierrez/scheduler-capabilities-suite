@@ -102,6 +102,14 @@ var _ = Describe("FairShare", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(v.Measurements["b_max_gpus_by_check"]).To(Equal(16.0))
 	})
+
+	It("records how long after the first submission B arrived", func() {
+		pods := append(aPods(), tenantPod("b0", "b", 8, 23.5, 24, 84), tenantPod("b1", "b", 8, 23.5, 24, 84))
+		tl := verdict.Build(fixture("fair-share", pods...), "fair-share", at(200))
+		v, err := verdict.FairShare(tl, params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Measurements["b_after_first_submit_s"]).To(Equal(23.5))
+	})
 })
 
 var _ = Describe("fairness over time", func() {
