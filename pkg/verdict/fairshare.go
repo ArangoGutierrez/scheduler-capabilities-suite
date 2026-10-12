@@ -34,8 +34,8 @@ func (p FairShareParams) validate() error {
 // FairShare judges whether tenant B received its entitlement within one
 // job length (plus tolerance) of its first submission: the most GPUs B had
 // running at any moment of [submission, submission + length + tolerance].
-// It also records the fairness of capacity over time across the probe's
-// tenants.
+// It also records how long after the probe's first submission B arrived,
+// and the fairness of capacity over time across the probe's tenants.
 func FairShare(t Timeline, p FairShareParams) (Verdict, error) {
 	if err := p.validate(); err != nil {
 		return Verdict{}, err
@@ -49,6 +49,12 @@ func FairShare(t Timeline, p FairShareParams) (Verdict, error) {
 	if bSubmit.IsZero() {
 		return Verdict{}, fmt.Errorf("no submission recorded for tenant %s", p.TenantB)
 	}
+	first := bSubmit
+	for _, j := range t.Jobs {
+		if !j.Created.IsZero() && j.Created.Before(first) {
+			first = j.Created
+		}
+	}
 	var bPods []*Pod
 	for _, q := range t.Pods {
 		if q.Tenant == p.TenantB {
@@ -61,11 +67,12 @@ func FairShare(t Timeline, p FairShareParams) (Verdict, error) {
 	f := fairnessOverTime(t, p.CapacityGPUs, p.WindowSec)
 	v := Verdict{
 		Measurements: map[string]float64{
-			"b_max_gpus_by_check":   float64(bMax),
-			"check_offset_s":        offset,
-			"windows_used":          float64(f.Used),
-			"windows_excluded":      float64(f.Excluded),
-			"worst_shortfall_gpu_s": f.WorstShortfall,
+			"b_max_gpus_by_check":    float64(bMax),
+			"check_offset_s":         offset,
+			"b_after_first_submit_s": bSubmit.Sub(first).Seconds(),
+			"windows_used":           float64(f.Used),
+			"windows_excluded":       float64(f.Excluded),
+			"worst_shortfall_gpu_s":  f.WorstShortfall,
 		},
 		EvidenceSeq: evidence(t.Pods, t.jobSeqs(jobNames(t)...)),
 	}
