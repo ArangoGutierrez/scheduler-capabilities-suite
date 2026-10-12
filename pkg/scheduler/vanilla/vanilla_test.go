@@ -77,5 +77,6 @@ var _ = Describe("claims", func() {
 		Expect(f.Claims["preemption"].Expected).To(Equal(verdict.Supported))
 		Expect(f.Claims["backfill"].Expected).To(Equal(verdict.Partial))
 		Expect(f.Claims["backfill"].Citation).To(Equal("https://kubernetes.io/docs/concepts/scheduling-eviction/gang-scheduling/"))
+		Expect(f.Claims["backfill"].Claim).To(ContainSubstring("allowing other workloads to be scheduled in the meantime"))
 	})
 })

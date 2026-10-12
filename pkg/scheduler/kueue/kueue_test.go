@@ -17,6 +17,7 @@ import (
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/cluster"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/kueue"
+	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/verdict"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/workload"
 )
 
@@ -209,6 +210,8 @@ var _ = Describe("claims", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(f.Scheduler).To(Equal("kueue"))
 		Expect(f.Claims["fair-share"].Citation).To(Equal("https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/"))
+		Expect(f.Claims["fair-share"].Claim).To(ContainSubstring("reclaimWithinCohort determines whether a pending Workload can preempt"))
+		Expect(f.Claims["fair-share"].Expected).To(Equal(verdict.Supported))
 		Expect(f.Claims["priority"].Claim).To(ContainSubstring("creationTimestamp. [...] BestEffortFIFO"))
 	})
 })
