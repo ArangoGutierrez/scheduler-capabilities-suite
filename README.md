@@ -70,7 +70,9 @@ Results land in `results/<run-id>/`; `docs/data-format.md` describes every file.
   3.5 s, against at least 16 GPUs x 51 s, over 800, for waiting until A's jobs end. `b_after_first_submit_s` records
   when B arrived: 10 s after A by design, later if A took longer to fill the fleet.
 - **Backfill.** Neither profile documents a reservation for a waiting gang, so both claims expect `partial`: short
-  jobs run on free nodes and can delay the gang.
+  jobs run on free nodes and can delay the gang. The rule counts only the time short jobs held nodes past the
+  gang's earliest possible start (`short_hold_s`, about 25 to 28 s in the POC runs); the rest of the delay is the
+  scheduler's own start latency (`big_start_after_free_s`: about 15 s for a vanilla gang's retry, 3 s on Kueue).
 - **Topology.** With one rack-a node busy, a scheduler that picks at random among the free nodes places a 2-pod gang
   in one rack one time in three (two of the three free nodes are in rack B), so three of three by chance is about one
   run in 27. `topology-control` shows what vanilla does without the constraint.

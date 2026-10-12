@@ -97,7 +97,7 @@ func podChanges(old, cur *corev1.Pod) []change {
 }
 
 // eventReasons maps the Event reasons the recorder keeps to transitions.
-// Every other reason is skipped: the cluster logs keep the full record.
+// Every other reason is skipped and not exported anywhere.
 var eventReasons = map[string]events.Transition{
 	"Scheduled":        events.Scheduled,
 	"FailedScheduling": events.Unschedulable,

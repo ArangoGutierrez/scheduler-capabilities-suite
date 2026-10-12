@@ -31,7 +31,7 @@ field, an unknown transition or a schema other than 1 (`pkg/events`).
 | `schema` | 1 |
 | `seq` | position in the file, from 1 |
 | `run_id` | the run ID |
-| `observed_at` | when the recorder wrote the change, RFC 3339 with nanoseconds, host clock; `seq` and `observed_at` rise together |
+| `observed_at` | when the recorder wrote the change, RFC 3339 with nanoseconds, host clock; `seq` and `observed_at` rise together; the reader rejects a file where `observed_at` falls |
 | `api_time` | the object's own timestamp for the change, when it has one |
 | `api_time_precision` | `s` (pod and Job conditions, container states, creation and deletion times) or `us` (`events.k8s.io` Event time) |
 | `kind` | `Pod`, `Job`, `Event` or `Workload` (Kueue) |
@@ -51,7 +51,7 @@ What each kind records:
 - **Job**: created (a job's submission: under Kueue a queued Job has no pods), succeeded or failed (the
   `Complete` or `Failed` condition), deleted.
 - **Event**: only reasons `Scheduled`, `FailedScheduling`, `Preempted`, `QuotaReserved`, `Admitted`,
-  `Evicted`, about a Pod or Workload in a namespace the suite created. The cluster logs keep everything else.
+  `Evicted`, about a Pod or Workload in a namespace the suite created. Events with other reasons are not kept, and the suite does not export Event objects; the cluster logs hold only what each component logs.
 - **Workload** (Kueue, `workloads.kueue.x-k8s.io` v1beta2): created; quota_reserved, admitted, preempted,
   evicted, requeued when the condition of that name turns True; deleted.
 
