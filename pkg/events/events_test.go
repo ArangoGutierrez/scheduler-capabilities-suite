@@ -61,6 +61,20 @@ var _ = Describe("events", func() {
 		Expect(err).To(MatchError("line 2: seq 3, want 2"))
 	})
 
+	It("rejects an observed_at that falls while seq rises", func() {
+		second := strings.Replace(strings.Replace(line1, `"seq":1`, `"seq":2`, 1),
+			`"observed_at":"2026-10-10T10:00:01Z"`, `"observed_at":"2026-10-10T10:00:00.999Z"`, 1)
+		_, err := events.Read(strings.NewReader(line1 + "\n" + second + "\n"))
+		Expect(err).To(MatchError("line 2: observed_at 2026-10-10T10:00:00.999Z is before line 1's 2026-10-10T10:00:01Z"))
+	})
+
+	It("accepts two events observed at the same instant", func() {
+		second := strings.Replace(line1, `"seq":1`, `"seq":2`, 1)
+		got, err := events.Read(strings.NewReader(line1 + "\n" + second + "\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(HaveLen(2))
+	})
+
 	It("rejects a truncated last line and names it", func() {
 		in := line1 + "\n" + `{"schema":1,"seq":2,"run_id":"r1",` + "\n"
 		_, err := events.Read(strings.NewReader(in))
