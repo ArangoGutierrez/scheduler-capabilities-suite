@@ -39,7 +39,6 @@ func stampClock(cs *fake.Clientset) *stamped {
 // such as (2, 3] fails when the create itself crosses a second boundary.
 func expectOffset(offset float64, start time.Time, s *stamped) {
 	GinkgoHelper()
-	Expect(offset).To(BeNumerically(">", 2))
 	Expect(offset).To(BeNumerically(">=", s.stamp.Sub(s.now).Seconds()))
 	Expect(offset).To(BeNumerically("<=", s.stamp.Sub(start).Seconds()))
 }
