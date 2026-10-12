@@ -11,17 +11,19 @@ import (
 
 // Capability names, as used in probe labels, probes.json and claims files.
 const (
-	CapGang        = "gang"
-	CapGangControl = "gang-control"
-	CapPriority    = "priority"
-	CapPreemption  = "preemption"
-	CapFairShare   = "fair-share"
-	CapBackfill    = "backfill"
-	CapTopology    = "topology"
+	CapGang            = "gang"
+	CapGangControl     = "gang-control"
+	CapPriority        = "priority"
+	CapPreemption      = "preemption"
+	CapFairShare       = "fair-share"
+	CapBackfill        = "backfill"
+	CapTopology        = "topology"
+	CapTopologyControl = "topology-control"
 )
 
 // Capabilities lists the six capabilities, in report order. Controls such
-// as CapGangControl are not capabilities and have no documented claim.
+// as CapGangControl and CapTopologyControl are not capabilities and have no
+// documented claim.
 var Capabilities = []string{CapGang, CapPriority, CapPreemption, CapFairShare, CapBackfill, CapTopology}
 
 // Probe is one entry of probes.json: which probe ran, its parameters, and
@@ -79,7 +81,7 @@ func evaluate(evs []events.Event, pr Probe) (Verdict, error) {
 			return Verdict{}, err
 		}
 		return Backfill(t, p)
-	case CapTopology:
+	case CapTopology, CapTopologyControl:
 		var p TopologyParams
 		if err := decode(pr.Params, &p); err != nil {
 			return Verdict{}, err
