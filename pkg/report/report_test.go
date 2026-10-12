@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -33,26 +34,33 @@ type podSpec struct {
 	created, scheduled, running, end float64
 }
 
+// writeEvents writes the pods' events in time order, as the recorder does
+// and the reader requires; events at the same second keep pod order, then
+// transition order. seq counts from 1 in that order.
 func writeEvents(path string, pods []podSpec) {
 	f, err := os.Create(path)
 	Expect(err).NotTo(HaveOccurred())
 	defer f.Close()
-	enc := events.NewEncoder(f)
-	seq := int64(0)
+	var evs []events.Event
 	for _, p := range pods {
 		for _, step := range []struct {
 			tr events.Transition
 			s  float64
 		}{{events.Created, p.created}, {events.Scheduled, p.scheduled}, {events.Running, p.running}, {events.Succeeded, p.end}} {
-			seq++
-			e := events.Event{Schema: 1, Seq: seq, RunID: "fixture-run", ObservedAt: at(step.s), Kind: "Pod",
+			e := events.Event{Schema: 1, RunID: "fixture-run", ObservedAt: at(step.s), Kind: "Pod",
 				Namespace: "scs-" + p.probe, Name: p.name, UID: "uid-" + p.probe + "-" + p.name, Probe: p.probe,
 				Job: p.job, Tenant: "t1", GPUs: 8, Transition: step.tr}
 			if step.tr == events.Scheduled {
 				e.Node = p.node
 			}
-			Expect(enc.Encode(e)).To(Succeed())
+			evs = append(evs, e)
 		}
+	}
+	sort.SliceStable(evs, func(i, j int) bool { return evs[i].ObservedAt.Before(evs[j].ObservedAt) })
+	enc := events.NewEncoder(f)
+	for i := range evs {
+		evs[i].Seq = int64(i + 1)
+		Expect(enc.Encode(evs[i])).To(Succeed())
 	}
 	Expect(enc.Flush()).To(Succeed())
 }
@@ -133,14 +141,14 @@ var _ = Describe("Write", func() {
 		Expect(got[0].Capability).To(Equal("gang"))
 		Expect(got[0].Observed.Outcome).To(Equal(verdict.Supported))
 		Expect(got[0].Observed.Measurements).To(Equal(map[string]float64{"gangs": 2, "gangs_completed": 2, "max_partial_s": 0.5}))
-		Expect(got[0].Observed.EvidenceSeq).To(Equal([]int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}))
+		Expect(got[0].Observed.EvidenceSeq).To(Equal([]int64{1, 2, 3, 4, 9, 14, 15, 16, 21, 22, 26, 28, 30, 31, 37, 38}))
 		Expect(*got[0].Agree).To(BeTrue())
 
 		Expect(got[1].Capability).To(Equal("gang-control"))
 		Expect(got[1].Documented).To(BeNil())
 		Expect(got[1].Agree).To(BeNil())
 		Expect(got[1].Observed.Measurements["max_partial_s"]).To(Equal(21.5))
-		Expect(got[1].Observed.EvidenceSeq).To(Equal([]int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}))
+		Expect(got[1].Observed.EvidenceSeq).To(Equal([]int64{5, 6, 7, 8, 10, 11, 12, 17, 18, 19, 23, 24, 25, 27, 29, 36}))
 
 		Expect(got[2].Observed.Measurements).To(Equal(map[string]float64{"queued_jobs": 1, "queued_before_high": 1, "high_time_to_schedule_s": 37}))
 		Expect(got[2].Documented.Citation).To(Equal("https://example.org/p"))
