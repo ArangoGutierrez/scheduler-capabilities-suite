@@ -153,6 +153,19 @@ func (p *probe) await(ctx context.Context, cond func() bool, timeout time.Durati
 	return cond()
 }
 
+// pause waits d, or fails the spec as soon as ctx ends (an interrupt or the
+// spec timeout), so an interrupted probe stops here instead of waking later
+// into finish while AfterSuite writes probes.json.
+func pause(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		Fail(fmt.Sprintf("interrupted while waiting: %v", context.Cause(ctx)))
+	case <-t.C:
+	}
+}
+
 // finish closes the probe's evidence window, evaluates its verdict from
 // the recorded file (the same path scs-report takes), and attaches the
 // verdict and its measurements to the Ginkgo report.

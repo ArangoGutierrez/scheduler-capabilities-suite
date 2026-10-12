@@ -32,7 +32,7 @@ func priorityProbe() {
 		for _, n := range queued {
 			p.submit(ctx, one(n, workload.Low, 30*time.Second))
 		}
-		time.Sleep(2 * time.Second) // scenario offset: the high-priority pod arrives 2 s after the queued pods
+		pause(ctx, 2*time.Second) // scenario offset: the high-priority pod arrives 2 s after the queued pods
 		p.submit(ctx, one("high", workload.High, 30*time.Second))
 		p.await(ctx, func() bool { return p.scheduled(ctx, "high") >= 1 }, 150*time.Second)
 		p.finish(ctx, verdict.CapPriority, verdict.PriorityParams{HighJob: "high", QueuedJobs: queued})

@@ -262,8 +262,9 @@ func register(order int, specs func()) bool {
 	return true
 }
 
-// The probes run in registration order, each on an empty fleet.
-var _ = Describe("probes", Ordered, Serial, func() {
+// The probes run in registration order, each on an empty fleet. A probe that fails does not skip the ones after
+// it: each checks for an empty fleet when it starts.
+var _ = Describe("probes", Ordered, Serial, ContinueOnFailure, func() {
 	orders := make([]int, 0, len(registry))
 	for o := range registry {
 		orders = append(orders, o)

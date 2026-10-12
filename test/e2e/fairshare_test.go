@@ -20,16 +20,25 @@ func fairShareProbe() {
 		one := func(name, tenant string) workload.Job {
 			return workload.Job{Name: name, Tenant: tenant, Priority: workload.Low, Pods: 1, GPUsPerPod: 8, RunFor: 60 * time.Second}
 		}
-		for _, n := range names("a", 8) {
+		aJobs := names("a", 8)
+		aSubmit := time.Now()
+		for _, n := range aJobs {
 			p.submit(ctx, one(n, "a"))
 		}
-		time.Sleep(10 * time.Second) // scenario offset: B submits 10 s after A
+		p.mustAwait(ctx, "tenant a holds the fleet", func() bool {
+			held := 0
+			for _, n := range aJobs {
+				held += p.running(ctx, n)
+			}
+			return held*8 >= fleet.Default().GPUs() // each a pod holds 8 GPUs
+		}, 2*time.Minute)
+		pause(ctx, time.Until(aSubmit.Add(10*time.Second))) // scenario offset: B submits 10 s after A
 		bSubmit := time.Now()
 		for _, n := range names("b", 4) {
 			p.submit(ctx, one(n, "b"))
 		}
 		// the rule reads B's GPUs 65 s after B's first submission; wait 5 s past it
-		time.Sleep(time.Until(bSubmit.Add(70 * time.Second)))
+		pause(ctx, time.Until(bSubmit.Add(70*time.Second)))
 		p.finish(ctx, verdict.CapFairShare, verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 16,
 			JobLengthSec: 60, ToleranceSec: 5, CapacityGPUs: int64(fleet.Default().GPUs()), WindowSec: 10})
 	}, SpecTimeout(8*time.Minute))

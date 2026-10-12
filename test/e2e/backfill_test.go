@@ -26,11 +26,11 @@ func backfillProbe() {
 			}
 			return true
 		}, time.Minute)
-		time.Sleep(time.Second) // scenario offset: the gang arrives at tb + 1 s
+		pause(ctx, time.Second) // scenario offset: the gang arrives at tb + 1 s
 		p.submit(ctx, workload.Job{Name: "big", Priority: workload.Low, Pods: 4, GPUsPerPod: 8, RunFor: 20 * time.Second, Gang: true})
 		shorts := names("short", 4)
 		for _, n := range shorts {
-			time.Sleep(time.Second) // scenario offset: short jobs arrive at tb + 2 .. tb + 5 s
+			pause(ctx, time.Second) // scenario offset: short jobs arrive at tb + 2 .. tb + 5 s
 			p.submit(ctx, workload.Job{Name: n, Priority: workload.Low, Pods: 1, GPUsPerPod: 8, RunFor: 25 * time.Second})
 		}
 		p.await(ctx, func() bool { return p.scheduled(ctx, "big") >= 4 }, 3*time.Minute)
