@@ -79,6 +79,35 @@ var _ = Describe("Backfill", func() {
 		Expect(v.Measurements["short_hold_s"]).To(Equal(5.0))
 	})
 
+	It("caps a short pod's hold at the gang's start", func() {
+		// s1 runs 50 to 75, but the gang starts at 63: s1 held a node only
+		// until 63, 3 s past the earliest start (60 s); s2 and s3 stay pending
+		v, err := verdict.Backfill(scenario(63, 2, 50, -1, -1), params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Outcome).To(Equal(verdict.Supported))
+		Expect(v.Reason).To(Equal("2 short jobs ran before the gang and held nodes 3 s past its earliest possible start (tolerance 5 s); it started 3 s after that start"))
+		Expect(v.Measurements).To(Equal(map[string]float64{"small_before_big": 2, "big_start_delay_s": 3, "short_hold_s": 3, "big_start_after_free_s": 0}))
+	})
+
+	It("holds a node until the gang's start for a short pod that never ended", func() {
+		tl := verdict.Build(fixture("backfill",
+			done("blk0", "blk0", "n1", 0, 0, 0.5, 50), done("blk1", "blk1", "n2", 0, 0, 0.5, 55),
+			done("blk2", "blk2", "n3", 0, 0, 0.5, 60),
+			pod{name: "b0", job: "big", tenant: "t1", gpus: 8, node: "n1", created: 1, scheduled: 63, running: 63.5, end: -1},
+			pod{name: "b1", job: "big", tenant: "t1", gpus: 8, node: "n2", created: 1, scheduled: 63, running: 63.5, end: -1},
+			pod{name: "b2", job: "big", tenant: "t1", gpus: 8, node: "n3", created: 1, scheduled: 63, running: 63.5, end: -1},
+			pod{name: "b3", job: "big", tenant: "t1", gpus: 8, node: "n4", created: 1, scheduled: 63, running: 63.5, end: -1},
+			done("s0", "s0", "n4", 2, 2, 2.5, 27),
+			pod{name: "s1", job: "s1", tenant: "t1", gpus: 8, node: "n4", created: 2, scheduled: 50, running: 50.5, end: -1},
+			pending("s2", "s2", 2), pending("s3", "s3", 2),
+		), "backfill", at(200))
+		v, err := verdict.Backfill(tl, params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Outcome).To(Equal(verdict.Supported))
+		Expect(v.Reason).To(Equal("2 short jobs ran before the gang and held nodes 3 s past its earliest possible start (tolerance 5 s); it started 3 s after that start"))
+		Expect(v.Measurements).To(Equal(map[string]float64{"small_before_big": 2, "big_start_delay_s": 3, "short_hold_s": 3, "big_start_after_free_s": 0}))
+	})
+
 	It("is partial when short jobs delay the gang past the tolerance", func() {
 		v, err := verdict.Backfill(scenario(78, 2, 27.5, 52.5, 78.5), params)
 		Expect(err).NotTo(HaveOccurred())
