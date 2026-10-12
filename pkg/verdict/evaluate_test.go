@@ -37,6 +37,29 @@ var _ = Describe("Evaluate", func() {
 		Expect(err).To(MatchError(`gang: params: json: unknown field "colour"`))
 	})
 
+	It("judges the topology control with the topology rule, under its own name", func() {
+		attempt := func(job, nodeA, nodeB string, start float64) []pod {
+			return []pod{
+				done(job+"-0", job, nodeA, start, start+1, start+1.5, start+20),
+				done(job+"-1", job, nodeB, start, start+1, start+1.5, start+20),
+			}
+		}
+		var all []pod
+		for _, a := range [][]pod{attempt("t1", "n3", "n4", 0), attempt("t2", "n2", "n3", 30), attempt("t3", "n3", "n4", 60)} {
+			all = append(all, a...)
+		}
+		v, err := verdict.Evaluate(fixture("topology-control", all...), verdict.Probe{
+			Capability: "topology-control",
+			Params: json.RawMessage(`{"attempt_jobs":["t1","t2","t3"],"pods_per_job":2,` +
+				`"rack_of":{"n1":"rack-a","n2":"rack-a","n3":"rack-b","n4":"rack-b"}}`),
+			WindowEnd: at(200),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Capability).To(Equal("topology-control"))
+		Expect(v.Outcome).To(Equal(verdict.Partial))
+		Expect(v.Reason).To(Equal("2 of 3 attempts placed every pod in one rack"))
+	})
+
 	It("rejects an unknown capability", func() {
 		_, err := verdict.Evaluate(evs, verdict.Probe{Capability: "teleport", Params: json.RawMessage(`{}`), WindowEnd: at(50)})
 		Expect(err).To(MatchError("teleport: unknown capability"))
