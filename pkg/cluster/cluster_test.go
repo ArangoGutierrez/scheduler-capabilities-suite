@@ -2,8 +2,10 @@ package cluster
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +52,34 @@ func (f *fakeProvider) Delete(name, kubeconfig string) error {
 }
 func (f *fakeProvider) CollectLogs(_, _ string) error { return nil }
 
+// testConfig is SuiteConfig with the lock in a fresh directory, so specs
+// never take the host-wide lock a live run holds.
+func testConfig(name, kubeconfig string) Config {
+	cfg := SuiteConfig(name, kubeconfig)
+	cfg.LockDir = GinkgoT().TempDir()
+	return cfg
+}
+
+// writeKubeconfig writes a kubeconfig the clients can be built from; nothing
+// listens at its server, and building the clients does not dial.
+func writeKubeconfig(path string) {
+	GinkgoHelper()
+	const kc = `apiVersion: v1
+kind: Config
+clusters:
+- name: c
+  cluster: {server: "https://127.0.0.1:1"}
+contexts:
+- name: kind-scs-vanilla
+  context: {cluster: c, user: u}
+current-context: kind-scs-vanilla
+users:
+- name: u
+  user: {}
+`
+	Expect(os.WriteFile(path, []byte(kc), 0o600)).To(Succeed())
+}
+
 // kindOptions applies opts to a fresh kind ClusterOptions and returns it.
 // kind keeps that type internal, so this reaches it by reflection: each
 // CreateOption is a func taking *ClusterOptions. kind is pinned (v0.33.0);
@@ -70,7 +100,7 @@ func kindOptions(opts []kindcluster.CreateOption) reflect.Value {
 var _ = Describe("Create", func() {
 	It("refuses a cluster name that already exists, and creates or deletes nothing", func() {
 		p := &fakeProvider{existing: []string{"bench-mokka", "scs-vanilla"}}
-		_, err := Create(p, SuiteConfig("scs-vanilla", "/tmp/kc"))
+		_, err := Create(p, testConfig("scs-vanilla", "/tmp/kc"))
 		Expect(err).To(MatchError(`kind cluster "scs-vanilla" already exists; the suite does not reuse or delete it. Remove it with: kind delete cluster --name scs-vanilla`))
 		Expect(p.created).To(BeEmpty())
 		Expect(p.deleted).To(BeEmpty())
@@ -78,7 +108,7 @@ var _ = Describe("Create", func() {
 
 	It("asks kind to create a new name", func() {
 		p := &fakeProvider{existing: []string{"bench-mokka"}}
-		_, err := Create(p, SuiteConfig("scs-kueue", "/tmp/kc"))
+		_, err := Create(p, testConfig("scs-kueue", "/tmp/kc"))
 		Expect(err).To(MatchError(`create kind cluster "scs-kueue": fake: no docker`))
 		Expect(p.created).To(Equal([]string{"scs-kueue"}))
 		Expect(p.deleted).To(BeEmpty())
@@ -89,7 +119,7 @@ var _ = Describe("Create", func() {
 		// written is missing and loading it fails after creation
 		kc := filepath.Join(GinkgoT().TempDir(), "scs-vanilla.kubeconfig")
 		p := &fakeProvider{existing: []string{"bench-mokka"}, createOK: true}
-		_, err := Create(p, SuiteConfig("scs-vanilla", kc))
+		_, err := Create(p, testConfig("scs-vanilla", kc))
 		Expect(err).To(MatchError("stat " + kc + ": no such file or directory"))
 		Expect(p.deleted).To(Equal([]string{"scs-vanilla"}))
 		Expect(p.deletedKC).To(Equal([]string{kc}))
@@ -98,16 +128,70 @@ var _ = Describe("Create", func() {
 	It("reports a failed cleanup alongside the original error", func() {
 		kc := filepath.Join(GinkgoT().TempDir(), "scs-vanilla.kubeconfig")
 		p := &fakeProvider{createOK: true, deleteErr: errors.New("fake: delete failed")}
-		_, err := Create(p, SuiteConfig("scs-vanilla", kc))
+		_, err := Create(p, testConfig("scs-vanilla", kc))
 		Expect(err).To(MatchError("stat " + kc + ": no such file or directory\ndelete kind cluster \"scs-vanilla\": fake: delete failed"))
 		Expect(p.deleted).To(Equal([]string{"scs-vanilla"}))
+	})
+})
+
+var _ = Describe("Create's lock", func() {
+	It("refuses a second run while one holds the profile's lock, before asking kind anything", func() {
+		cfg := testConfig("scs-vanilla", filepath.Join(GinkgoT().TempDir(), "kc"))
+		writeKubeconfig(cfg.Kubeconfig)
+		first, err := Create(&fakeProvider{createOK: true}, cfg)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(first.Delete)
+		p := &fakeProvider{createOK: true}
+		_, err = Create(p, cfg)
+		Expect(err).To(MatchError("another suite run holds " + filepath.Join(cfg.LockDir, "scs-vanilla.lock") + "; the suite runs one cluster per profile at a time"))
+		Expect(p.created).To(BeEmpty())
+		Expect(p.deleted).To(BeEmpty())
+	})
+
+	It("lets a new run in once the first cluster is deleted", func() {
+		cfg := testConfig("scs-vanilla", filepath.Join(GinkgoT().TempDir(), "kc"))
+		writeKubeconfig(cfg.Kubeconfig)
+		first, err := Create(&fakeProvider{createOK: true}, cfg)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.Delete()).To(Succeed())
+		p := &fakeProvider{createOK: true}
+		second, err := Create(p, cfg)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(p.created).To(Equal([]string{"scs-vanilla"}))
+		Expect(second.Delete()).To(Succeed())
+	})
+
+	DescribeTable("releases the lock when Create fails",
+		func(existing []string, createOK, kubeconfig bool, want string) {
+			cfg := testConfig("scs-vanilla", filepath.Join(GinkgoT().TempDir(), "kc"))
+			if kubeconfig {
+				writeKubeconfig(cfg.Kubeconfig)
+			}
+			_, err := Create(&fakeProvider{existing: existing, createOK: createOK}, cfg)
+			Expect(err).To(MatchError(strings.ReplaceAll(want, "KC", cfg.Kubeconfig)))
+			writeKubeconfig(cfg.Kubeconfig)
+			c, err := Create(&fakeProvider{createOK: true}, cfg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.Delete()).To(Succeed())
+		},
+		Entry("when kind's create fails", nil, false, true, `create kind cluster "scs-vanilla": fake: no docker`),
+		Entry("when the name is taken", []string{"scs-vanilla"}, false, true,
+			`kind cluster "scs-vanilla" already exists; the suite does not reuse or delete it. Remove it with: kind delete cluster --name scs-vanilla`),
+		Entry("when connecting fails after kind created the cluster", nil, true, false, "stat KC: no such file or directory"),
+	)
+
+	It("refuses a config without a lock dir, before asking kind anything", func() {
+		p := &fakeProvider{createOK: true}
+		_, err := Create(p, Config{Name: "scs-vanilla", Kubeconfig: "/tmp/kc"})
+		Expect(err).To(MatchError("cluster config has no lock dir"))
+		Expect(p.created).To(BeEmpty())
 	})
 })
 
 var _ = Describe("Create's kind options", func() {
 	It("passes kind the pinned node image, the feature gates, the runtime config and the kubeconfig path", func() {
 		p := &fakeProvider{}
-		_, err := Create(p, SuiteConfig("scs-vanilla", "/tmp/kc"))
+		_, err := Create(p, testConfig("scs-vanilla", "/tmp/kc"))
 		Expect(err).To(MatchError(`create kind cluster "scs-vanilla": fake: no docker`))
 		o := kindOptions(p.opts)
 		Expect(o.FieldByName("KubeconfigPath").String()).To(Equal("/tmp/kc"))
@@ -123,7 +207,9 @@ var _ = Describe("Create's kind options", func() {
 
 var _ = Describe("SuiteConfig", func() {
 	It("pins the node image and turns on the Workload API in every component", func() {
-		k := SuiteConfig("scs-vanilla", "/tmp/kc").kind()
+		cfg := SuiteConfig("scs-vanilla", "/tmp/kc")
+		Expect(cfg.LockDir).To(Equal("/tmp"))
+		k := cfg.kind()
 		Expect(k.Nodes).To(HaveLen(1))
 		Expect(k.Nodes[0].Image).To(Equal("kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"))
 		Expect(k.FeatureGates).To(Equal(map[string]bool{"GenericWorkload": true, "TopologyAwareWorkloadScheduling": true}))
