@@ -63,6 +63,6 @@ verdict. The rules are in `pkg/verdict` and the spec's section 5.
 
 ## Limits
 
-- Timestamps compare within one run only; the clock offset in `manifest.json` bounds host-versus-cluster skew to a second.
+- Timestamps compare within one run only. `manifest.json` records the host-versus-cluster clock offset at the start and end of each profile (`clock_offset_start_s`, `clock_offset_end_s`), to about a second; no check rejects a run on it.
 - A recorder watch error, or a control-plane container restart, during a probe makes that probe a harness failure, not a verdict.
 - Every number in a run comes from a single run. It is evidence for a verdict, not a result to quote.

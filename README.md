@@ -53,7 +53,8 @@ Results land in `results/<run-id>/`; `docs/data-format.md` describes every file.
   `scs-<profile>` behind.
 - Closing the terminal (SIGHUP) or SIGKILL gets no cleanup; run long runs under `tmux` or `nohup`.
 - A cluster left behind makes the next run refuse and print the command to delete it:
-  `kind delete cluster --name scs-<profile>`.
+  `kind delete cluster --name scs-<profile>`. Without the kind CLI, run
+  `go run sigs.k8s.io/kind delete cluster --name scs-<profile>` from this checkout.
 
 ## What the verdicts can claim
 
@@ -62,15 +63,17 @@ Results land in `results/<run-id>/`; `docs/data-format.md` describes every file.
   preemption the runs recorded has the reason `InCohortReclamation`, and a run without the `fairSharing`
   configuration gave the same verdict. The scenario does not exercise fair sharing of borrowable capacity; that needs
   a cohort with capacity no tenant is entitled to.
-- **The fair-share check window.** The rule reads tenant B's GPUs one job length (plus 5 s) after B arrives, when
-  tenant A's first jobs have already ended, so a scheduler that only lets B in as A's jobs finish can also reach
-  `supported`. `worst_shortfall_gpu_s` tells the two apart: about 95 GPU-seconds in the Kueue runs, where B's first
-  16 GPUs were placed within 3.5 s, against roughly 16 GPUs x 51 s, over 800, for waiting until A's jobs end.
+- **The fair-share check window.** The rule takes the most GPUs tenant B held at any moment within one job length
+  (plus 5 s) of arriving. By the end of that window tenant A's first jobs have ended, so a scheduler that only lets B
+  in as A's jobs finish can also reach `supported`. `worst_shortfall_gpu_s`, the larger of the two tenants' totals,
+  tells the two apart: 94 to 97 GPU-seconds in the POC's Kueue runs, where B's first 16 GPUs were placed within
+  3.5 s, against at least 16 GPUs x 51 s, over 800, for waiting until A's jobs end. `b_after_first_submit_s` records
+  when B arrived: 10 s after A by design, later if A took longer to fill the fleet.
 - **Backfill.** Neither profile documents a reservation for a waiting gang, so both claims expect `partial`: short
   jobs run on free nodes and can delay the gang.
-- **Topology.** With one rack-a node busy, a scheduler that ignores racks places a 2-pod gang in one rack by chance
-  one time in three (two of the three free nodes are in rack B), so three of three by chance is about one run in 27.
-  `topology-control` shows what vanilla does without the constraint.
+- **Topology.** With one rack-a node busy, a scheduler that picks at random among the free nodes places a 2-pod gang
+  in one rack one time in three (two of the three free nodes are in rack B), so three of three by chance is about one
+  run in 27. `topology-control` shows what vanilla does without the constraint.
 
 ## Caveats
 
