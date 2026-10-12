@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"syscall"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -28,24 +31,29 @@ import (
 const NodeImage = "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"
 
 // Config is one kind cluster: its name, the kubeconfig file kind writes,
-// and the feature gates and API runtime config every profile shares.
+// the feature gates and API runtime config every profile shares, and the
+// directory of the lock Create holds for the cluster's life.
 type Config struct {
 	Name          string
 	Kubeconfig    string
 	FeatureGates  map[string]bool
 	RuntimeConfig map[string]string
+	LockDir       string
 }
 
 // SuiteConfig returns the configuration both profiles use: the Workload API
 // served, and GenericWorkload (gangs, workload-aware preemption) and
 // TopologyAwareWorkloadScheduling (alpha; PodGroup topology constraints) on
-// in every component.
+// in every component. The lock lives in /tmp, a fixed path, because
+// $TMPDIR differs between sandboxed and unsandboxed processes on macOS and
+// every run on the host must find the same lock.
 func SuiteConfig(name, kubeconfig string) Config {
 	return Config{
 		Name:          name,
 		Kubeconfig:    kubeconfig,
 		FeatureGates:  map[string]bool{"GenericWorkload": true, "TopologyAwareWorkloadScheduling": true},
 		RuntimeConfig: map[string]string{"scheduling.k8s.io/v1beta1": "true"},
+		LockDir:       "/tmp",
 	}
 }
 
@@ -83,12 +91,52 @@ type Cluster struct {
 	Dynamic    dynamic.Interface
 	Applier    *apply.Applier
 	p          Provider
+	lock       *os.File
 }
 
-// Create makes the cluster. It refuses when a kind cluster of that name
-// already exists: the suite neither reuses nor deletes a cluster it did not
-// create in this run.
+// Create makes the cluster. It first takes an exclusive lock on
+// <LockDir>/<Name>.lock and holds it until Delete returns, or releases it
+// when Create fails; the OS releases it if the process dies. Without the
+// lock, two runs started at once both pass the name checks, and the
+// loser's failed kind create deletes the winner's nodes. Create refuses
+// when a kind cluster of that name already exists: the suite neither
+// reuses nor deletes a cluster it did not create in this run.
 func Create(p Provider, cfg Config) (*Cluster, error) {
+	lock, err := lockName(cfg)
+	if err != nil {
+		return nil, err
+	}
+	c, err := create(p, cfg)
+	if err != nil {
+		lock.Close()
+		return nil, err
+	}
+	c.lock = lock
+	return c, nil
+}
+
+// lockName takes the host-wide lock on cfg.Name without waiting.
+func lockName(cfg Config) (*os.File, error) {
+	if cfg.LockDir == "" {
+		return nil, errors.New("cluster config has no lock dir")
+	}
+	path := filepath.Join(cfg.LockDir, cfg.Name+".lock")
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("cluster lock: %w", err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, fmt.Errorf("another suite run holds %s; the suite runs one cluster per profile at a time", path)
+		}
+		return nil, fmt.Errorf("lock %s: %w", path, err)
+	}
+	return f, nil
+}
+
+// create is Create without the lock.
+func create(p Provider, cfg Config) (*Cluster, error) {
 	names, err := p.List()
 	if err != nil {
 		return nil, fmt.Errorf("list kind clusters: %w", err)
@@ -140,8 +188,17 @@ func connect(p Provider, cfg Config) (*Cluster, error) {
 	return &Cluster{Name: cfg.Name, Kubeconfig: cfg.Kubeconfig, REST: restCfg, Clientset: cs, Dynamic: dyn, Applier: a, p: p}, nil
 }
 
-// Delete deletes the cluster.
-func (c *Cluster) Delete() error { return c.p.Delete(c.Name, c.Kubeconfig) }
+// Delete deletes the cluster, then releases its lock.
+func (c *Cluster) Delete() error {
+	err := c.p.Delete(c.Name, c.Kubeconfig)
+	if c.lock != nil {
+		if cerr := c.lock.Close(); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("release cluster lock: %w", cerr))
+		}
+		c.lock = nil
+	}
+	return err
+}
 
 // ExportLogs writes what `kind export logs` writes into dir.
 func (c *Cluster) ExportLogs(dir string) error { return c.p.CollectLogs(c.Name, dir) }
