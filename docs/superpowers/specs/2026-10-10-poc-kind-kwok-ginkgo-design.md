@@ -290,3 +290,10 @@ override the sections they name.
 | A9 | Kueue v0.20.1 is installed from its release manifest (sha256 `c48514295365aae0c7dc578c70330befdd0015fec57cb4a06ba872bbef8750dd`) with a `fairSharing` block added to the manager Configuration before the first apply; a cold install's webhook took 239 s in R1 and 2 min 56 s in validation, so a Kueue profile run takes about 4 minutes longer than section 4's estimate. Kueue's objects are `kueue.x-k8s.io/v1beta2`; its Workloads must be named `workloads.kueue.x-k8s.io`, because `scheduling.k8s.io` also serves `workloads`. | R1 K1, K2; validation |
 | A10 | A control-plane container restart during a probe (R1 saw a 2.3 s etcd fsync stall make the scheduler, controller-manager and Kueue lose leader election) is a harness failure for that probe, like a recorder watch error. | R1 |
 | A11 | Documented expectations: vanilla expects supported for gang, priority, preemption (disruption mode all) and topology, and not_supported for fair-share and backfill (no documented mechanism); Kueue expects supported for gang, priority, preemption, fair-share and topology, and partial for backfill (BestEffortFIFO lets newer workloads pass a blocked one; no reservation is documented). Every claim quotes its page (`claims/*.yaml`). | R1 K3 |
+
+## 13. Amendments, 2026-10-12 (method-fix round and final review)
+
+| # | amendment | source |
+|---|---|---|
+| A12 | Vanilla's backfill claim quotes the gang-scheduling page (a waiting gang lets other workloads schedule) and expects `partial`; Kueue's fair-share claim quotes `reclaimWithinCohort`, which is what the scenario exercises. This overrides A11 for those two claims. A vanilla-only `topology-control` probe repeats topology without the one-rack constraint. | Carlos, method-fix round |
+| A13 | Backfill counts only the time short jobs held nodes past the gang's earliest possible start against the 5 s tolerance (`short_hold_s`); the gang's own start latency is recorded as `big_start_after_free_s`. This overrides the backfill row of section 5. | Carlos, final review |
