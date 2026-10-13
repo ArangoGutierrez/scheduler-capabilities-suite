@@ -116,11 +116,23 @@ var _ = Describe("Backfill", func() {
 	})
 
 	It("keeps the longest hold when a later short pod holds a node for less", func() {
-		// s1 runs 52.5 to 77.5, 17.5 s past the earliest start (60 s); s2 runs
-		// 36.5 to 61.5, 1.5 s past it; s3 stays pending. The longest hold
-		// comes first, so a rule that kept the last hold would read 1.5 s and
-		// call the gang on time.
-		v, err := verdict.Backfill(scenario(80, 2, 52.5, 36.5, -1), params)
+		// s1 runs 52.5 to 77.5 on n4, 17.5 s past the earliest start (60 s);
+		// s2 runs 56 to 61 on n1, 1 s past it; s3 stays pending. The longest
+		// hold comes first both in job order and in time, so a rule that kept
+		// the last hold would read 1 s and call the gang on time.
+		tl := verdict.Build(fixture("backfill",
+			done("blk0", "blk0", "n1", 0, 0, 0.5, 50), done("blk1", "blk1", "n2", 0, 0, 0.5, 55),
+			done("blk2", "blk2", "n3", 0, 0, 0.5, 60),
+			pod{name: "b0", job: "big", tenant: "t1", gpus: 8, node: "n1", created: 1, scheduled: 80, running: 80.5, end: -1},
+			pod{name: "b1", job: "big", tenant: "t1", gpus: 8, node: "n2", created: 1, scheduled: 80, running: 80.5, end: -1},
+			pod{name: "b2", job: "big", tenant: "t1", gpus: 8, node: "n3", created: 1, scheduled: 80, running: 80.5, end: -1},
+			pod{name: "b3", job: "big", tenant: "t1", gpus: 8, node: "n4", created: 1, scheduled: 80, running: 80.5, end: -1},
+			done("s0", "s0", "n4", 2, 2, 2.5, 27),
+			done("s1", "s1", "n4", 2, 52.5, 53, 77.5),
+			done("s2", "s2", "n1", 2, 56, 56.5, 61),
+			pending("s3", "s3", 2),
+		), "backfill", at(200))
+		v, err := verdict.Backfill(tl, params)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(v.Outcome).To(Equal(verdict.Partial))
 		Expect(v.Reason).To(Equal("3 short jobs ran before the gang and held nodes 17.5 s past its earliest possible start (tolerance 5 s); it started 20 s after that start"))
