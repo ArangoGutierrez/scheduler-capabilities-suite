@@ -181,6 +181,19 @@ var _ = Describe("Create's lock", func() {
 		Expect(during).To(MatchError("another suite run holds " + filepath.Join(cfg.LockDir, "scs-vanilla.lock") + "; the suite runs one cluster per profile at a time"))
 	})
 
+	It("returns kind's delete error and still releases the lock", func() {
+		cfg := testConfig("scs-vanilla", filepath.Join(GinkgoT().TempDir(), "kc"))
+		writeKubeconfig(cfg.Kubeconfig)
+		c, err := Create(&fakeProvider{createOK: true, deleteErr: errors.New("fake: delete failed")}, cfg)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Delete()).To(MatchError("fake: delete failed"))
+		p := &fakeProvider{createOK: true}
+		second, err := Create(p, cfg)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(p.created).To(Equal([]string{"scs-vanilla"}))
+		Expect(second.Delete()).To(Succeed())
+	})
+
 	DescribeTable("releases the lock when Create fails",
 		func(existing []string, createOK, kubeconfig bool, want string) {
 			cfg := testConfig("scs-vanilla", filepath.Join(GinkgoT().TempDir(), "kc"))
