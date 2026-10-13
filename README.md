@@ -65,17 +65,20 @@ Results land in `results/<run-id>/`; `docs/data-format.md` describes every file.
   a cohort with capacity no tenant is entitled to.
 - **The fair-share check window.** The rule takes the most GPUs tenant B held at any moment within one job length
   (plus 5 s) of arriving. By the end of that window tenant A's first jobs have ended, so a scheduler that only lets B
-  in as A's jobs finish can also reach `supported`. `worst_shortfall_gpu_s`, the larger of the two tenants' totals,
-  tells the two apart: 94 to 97 GPU-seconds in the POC's Kueue runs, where B's first 16 GPUs were placed within
-  3.5 s, against at least 16 GPUs x 51 s, over 800, for waiting until A's jobs end. `b_after_first_submit_s` records
-  when B arrived: 10 s after A by design, later if A took longer to fill the fleet.
+  in as A's jobs finish can also reach `supported`, and vanilla does. `worst_shortfall_gpu_s`, the larger of the two
+  tenants' totals, tells the two apart. In the two full runs on a Linux VM it was 92.4 and 92.5 GPU-seconds on
+  Kueue, where B held its 16 GPUs 3.2 s after arriving, against 801.0 and 801.1 on vanilla, where B waited 50 s for
+  A's jobs to end and then got all 16 at once. `jain_median` reads 1 on Kueue and 0.5 on vanilla in both runs.
+  `b_after_first_submit_s` records when B arrived: 10 s after A by design, later if A took longer to fill the fleet.
 - **Backfill.** Neither profile documents a reservation for a waiting gang, so both claims expect `partial`: short
   jobs run on free nodes and can delay the gang. The rule counts only the time short jobs held nodes past the
   gang's earliest possible start (`short_hold_s`, about 25 to 28 s in the POC runs); the rest of the delay is the
   scheduler's own start latency (`big_start_after_free_s`: about 15 s for a vanilla gang's retry, 3 s on Kueue).
 - **Topology.** With one rack-a node busy, a scheduler that picks at random among the free nodes places a 2-pod gang
   in one rack one time in three (two of the three free nodes are in rack B), so three of three by chance is about one
-  run in 27. `topology-control` shows what vanilla does without the constraint.
+  run in 27. `topology-control` shows what vanilla does without the constraint. By the same odds the control itself
+  varies: in the two VM full runs it placed 0 of 3 and then 1 of 3 attempts in one rack, so it read `not_supported`
+  once and `partial` once.
 
 ## Caveats
 
