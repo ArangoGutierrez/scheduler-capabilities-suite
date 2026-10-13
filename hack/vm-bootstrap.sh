@@ -1,8 +1,8 @@
 #!/bin/bash
 # Prepare a Linux VM (amd64 or arm64) for a full suite run: install Go
 # 1.27.2, verified by sha256, under $PREFIX (default $HOME/.local), and check
-# Docker access, the tools the Makefile uses, and outbound access to every
-# host the suite pulls from.
+# Docker access, the tools the Makefile uses, and that every host the suite
+# pulls from answers over HTTPS (only its root path is probed).
 #   bash hack/vm-bootstrap.sh
 set -euo pipefail
 GO_VERSION=1.27.2
@@ -10,6 +10,13 @@ PREFIX=${PREFIX:-$HOME/.local}
 case "$PREFIX" in
   "" | "/") echo "vm-bootstrap: refusing PREFIX='$PREFIX'" >&2; exit 2 ;;
 esac
+# A go directory without a VERSION file is not a Go install (with
+# PREFIX=$HOME it is GOPATH, which holds the module cache and installed
+# binaries): never replace it.
+if [ -e "$PREFIX/go" ] && [ ! -f "$PREFIX/go/VERSION" ]; then
+  echo "vm-bootstrap: $PREFIX/go is not a Go install (no VERSION file); refusing to replace it" >&2
+  exit 2
+fi
 [ "$(uname -s)" = Linux ] || { echo "vm-bootstrap: Linux only" >&2; exit 2; }
 case "$(uname -m)" in
   x86_64) arch=amd64 sum=ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5 ;;
