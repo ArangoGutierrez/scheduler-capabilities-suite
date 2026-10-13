@@ -115,6 +115,29 @@ var _ = Describe("Backfill", func() {
 		Expect(v.Reason).To(Equal("3 short jobs ran before the gang and held nodes 17.5 s past its earliest possible start (tolerance 5 s); it started 18 s after that start"))
 	})
 
+	It("keeps the longest hold when a later short pod holds a node for less", func() {
+		// s1 runs 52.5 to 77.5, 17.5 s past the earliest start (60 s); s2 runs
+		// 36.5 to 61.5, 1.5 s past it; s3 stays pending. The longest hold
+		// comes first, so a rule that kept the last hold would read 1.5 s and
+		// call the gang on time.
+		v, err := verdict.Backfill(scenario(80, 2, 52.5, 36.5, -1), params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Outcome).To(Equal(verdict.Partial))
+		Expect(v.Reason).To(Equal("3 short jobs ran before the gang and held nodes 17.5 s past its earliest possible start (tolerance 5 s); it started 20 s after that start"))
+		Expect(v.Measurements).To(Equal(map[string]float64{"small_before_big": 3, "big_start_delay_s": 20, "short_hold_s": 17.5, "big_start_after_free_s": 2.5}))
+	})
+
+	It("leaves out a short pod scheduled at the same instant as the gang", func() {
+		// s1 is scheduled at 80 s, when the gang is: it did not run first and
+		// was not in the gang's way, although it then runs to 105 s; s2 and
+		// s3 stay pending
+		v, err := verdict.Backfill(scenario(80, 2, 80, -1, -1), params)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Outcome).To(Equal(verdict.Supported))
+		Expect(v.Reason).To(Equal("1 short jobs ran before the gang and held nodes 0 s past its earliest possible start (tolerance 5 s); it started 20 s after that start"))
+		Expect(v.Measurements).To(Equal(map[string]float64{"small_before_big": 1, "big_start_delay_s": 20, "short_hold_s": 0, "big_start_after_free_s": 20}))
+	})
+
 	It("is partial when short jobs ran and the gang never started", func() {
 		v, err := verdict.Backfill(scenario(-1, 2, 27.5, 52.5, 78), params)
 		Expect(err).NotTo(HaveOccurred())
