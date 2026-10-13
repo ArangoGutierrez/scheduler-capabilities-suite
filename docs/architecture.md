@@ -26,11 +26,16 @@ flowchart LR
     cluster -- "watches" --> recorder["recorder<br/>pkg/recorder"]
     recorder --> events[("events.jsonl")]
     events --> rules["verdict rules<br/>pkg/verdict"]
-    probes[("probes.json<br/>claims.yaml")] --> rules
-    rules --> report["report<br/>verdicts.json, summary.md"]
+    probes[("probes.json")] --> rules
+    rules --> report["report<br/>pkg/report"]
+    claims[("claims.yaml")] --> report
+    manifest[("manifest.json<br/>run ID")] --> report
+    report --> out[("verdicts.json<br/>summary.md")]
     events -. "offline, no cluster" .-> rebuild["make report<br/>cmd/scs-report"]
     probes -.-> rebuild
-    rebuild -.-> report
+    claims -.-> rebuild
+    manifest -.-> rebuild
+    rebuild -. "same code" .-> rules
 ```
 
 `make e2e` calls `hack/e2e.sh`, which runs the Ginkgo suite once per profile. For each profile the
@@ -70,7 +75,7 @@ Events recorded after `window_end`, such as the cleanup's deletions, never reach
 |---|---|
 | `pkg/apply` | server-side apply of multi-document YAML through client-go |
 | `pkg/claims` | loads and validates `claims/<profile>.yaml` |
-| `pkg/cluster` | creates and deletes kind clusters, holds the host-wide lock, pins the node image, measures clock offset |
+| `pkg/cluster` | creates and deletes kind clusters, holds the per-profile cluster lock, pins the node image, measures clock offset |
 | `pkg/events` | the `events.jsonl` schema (version 1): reader and writer |
 | `pkg/fleet` | the fake GPU fleet: four nodes, two racks, its node manifests |
 | `pkg/kwok` | installs kwok v0.8.0 from embedded, sha256-pinned manifests |
@@ -107,10 +112,14 @@ change an old run's rebuild. A disagreement is reported as a finding, not as a f
 one-rack constraint respectively. A verdict that its control also reaches has not shown that the
 mechanism made the difference. Controls have no claim and are listed separately in `summary.md`.
 
-**One cluster at a time.** Before creating `scs-<profile>`, the suite takes an exclusive lock on
-`/tmp/scs-<profile>.lock` and holds it until the cluster is deleted; a second run on the same host
-fails at once instead of racing. It also refuses to start if a kind cluster of that name exists: it
-never reuses or deletes a cluster it did not create in this run. The lock lives in `/tmp`, a fixed path,
+**One cluster per profile at a time.** Before creating `scs-<profile>`, the suite takes an exclusive
+lock on `/tmp/scs-<profile>.lock`. It holds the lock until it deletes the cluster or, when
+`KEEP_CLUSTER` keeps the cluster, until the test process exits. A second run of the same profile on this
+host fails at once instead of racing. The lock is per profile: it does not stop a vanilla run and a
+kueue run from overlapping, so do not start two runs on one host; the clusters would compete for CPU and
+disk and skew the timings. Within one `make e2e` the profiles run one after the other. The suite also
+refuses to start if a kind cluster of that name exists: it never reuses or deletes a cluster it did not
+create in this run. The lock lives in `/tmp`, a fixed path,
 because `$TMPDIR` can differ between processes on macOS and every run on the host must find the same lock.
 
 **A broken harness is red, an unexpected verdict is green.** A run is red when the harness could not

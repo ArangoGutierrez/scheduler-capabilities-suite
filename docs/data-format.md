@@ -68,5 +68,5 @@ verdict. The rules are in `pkg/verdict`; [results.md](results.md#per-capability)
 ## Limits
 
 - Timestamps compare within one run only. `manifest.json` records the host-versus-cluster clock offset at the start and end of each profile (`clock_offset_start_s`, `clock_offset_end_s`), to about a second; no check rejects a run on it. `clock_offset_end_s` is absent when the end-of-run check failed to measure.
-- A recorder watch error or relist, or a control-plane container restart, during a probe makes that probe a harness failure, not a verdict. `watch_errors` in `manifest.json` counts both kinds over the whole profile.
+- A recorder watch error or relist, or a control-plane container restart, during a probe makes that probe a harness failure, not a verdict. `watch_errors` in `manifest.json` counts watch errors and relists, not restarts, over the whole profile.
 - Every number in a run comes from a single run. It is evidence for a verdict, not a result to quote.

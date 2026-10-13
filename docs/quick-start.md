@@ -30,7 +30,8 @@ cd scheduler-capabilities-suite
 make test
 ```
 
-`make test` runs every unit suite with no cluster, in well under a minute. It ends like this:
+`make test` runs every unit suite with no cluster: about 3 minutes on the first build, while Go compiles
+the dependencies, and under a minute after that. It ends like this:
 
 ```
 [...] verdict - 74/76 specs ••••••••••••••••••••••••••••••••SS•••••••••••••••••••••••••••••••••••••••••• SUCCESS! [...] PASS
@@ -93,7 +94,7 @@ results: <repo>/results/<run-id>
 
 `SUCCESS` means the probe ran cleanly and recorded a verdict, whatever that verdict is. The last line
 names the run directory. The run ID is the UTC start time, the short commit, and `-dirty` when the
-checkout has uncommitted or untracked changes, for example `20261013T134604Z-00139f5`.
+checkout has uncommitted or untracked changes, for example `20260101T120000Z-abc1234-dirty`.
 
 `FOCUS` takes a Ginkgo label filter; [options.md](options.md#probe-labels-for-focus) lists the labels.
 
@@ -141,6 +142,8 @@ one to four minutes for its webhook to answer.
 ### Laptop or VM
 
 - **One probe at a time on a laptop is fine.**
+- **One `make e2e` at a time per host.** The cluster lock refuses a second run of the same profile, but
+  not a run of the other profile, and two clusters side by side compete for CPU and disk.
 - **A full run belongs on a Linux VM.** On a laptop an etcd fsync stall (2.3 s) once restarted the
   scheduler, the controller-manager and Kueue mid-run. The suite treats a control-plane restart during a
   probe as a harness failure, so such a run is red, not wrong, but it is wasted.
@@ -193,7 +196,7 @@ message ends with the delete command; run it (see above) and start again.
 
 **`another suite run holds /tmp/scs-vanilla.lock; the suite runs one cluster per profile at a time`**
 Another `make e2e` on this host is using that profile's cluster. Wait for it to finish. The lock is
-released when that process exits, however it exits.
+released when that run deletes its cluster, or when its process exits, however it exits.
 
 **`e2e: <dir> exists; choose another RUN_ID`** or **`... already holds events.jsonl from an earlier run;
 choose another run ID`**
@@ -211,6 +214,10 @@ nodes to report Ready with their GPUs. A timeout here is usually a slow or faile
 (`registry.k8s.io/kwok/kwok:v0.8.0`) or a Docker VM short on CPU or memory. Look in
 `results/<run-id>/<profile>/cluster-logs/` (kind's log export, including each pod's logs), give Docker
 more resources, or move to a VM.
+
+**`Will run 0 of 8 specs`, `SUCCESS!`, and no `summary.md`.**
+`FOCUS` matched no probe label, so nothing ran; the exit code is still 0. Check the spelling against
+[the labels](options.md#probe-labels-for-focus) (for example `fair-share`, not `fairshare`).
 
 **`e2e: git cannot read this checkout (copy it as a git clone)`**
 The run records the commit it ran, so it needs a git checkout, not a plain copy of the files.

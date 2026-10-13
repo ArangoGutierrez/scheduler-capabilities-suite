@@ -39,15 +39,18 @@ check command for each requirement.
 ## Quick start
 
 ```sh
-make test                                                 # unit specs, no cluster, under a minute
+make test                                                 # unit specs, no cluster; ~3 min first build, then <1 min
 make e2e SCHEDULER=vanilla FOCUS=gang                     # one probe on one profile, about 4 minutes
 make report RUN=results/<run-id> OUT=/tmp/scs-rebuild     # rebuild verdicts and summary offline
 ```
 
-Each run writes `results/<run-id>/summary.md`. This one is rendered from the committed test fixture
-(`cmd/scs-report/testdata/summary.md`), not from a real run:
+Each run writes `results/<run-id>/summary.md`. The sample below is the committed test fixture
+(`cmd/scs-report/testdata/summary.md`), rendered from hand-written events with one queued job. Its
+verdicts are invented test data: they say nothing about how vanilla or Kueue behave.
 
 ```markdown
+Run fixture-run. Each verdict comes from a single run: evidence for the POC, not a result to quote.
+
 | capability | profile | documented | observed | agree | evidence |
 |---|---|---|---|---|---|
 | gang | vanilla | supported | supported | yes | no gang was partly placed for more than 5 s, and all 2 gangs completed |

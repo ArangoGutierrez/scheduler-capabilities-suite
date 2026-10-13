@@ -186,7 +186,10 @@ tenants want more than half, it is 16 GPUs each.
 about 50 s into B's 65 s window. A scheduler with no fair-share mechanism, which lets B in only as A's
 jobs finish, can also reach `supported`. `worst_shortfall_gpu_s` tells the two apart: B kept out for
 about 50 s accrues on the order of 16 GPUs x 50 s = 800 GPU-seconds of shortfall, while a scheduler that
-reclaims B's share within seconds accrues a small fraction of that. Compare the shortfall and
+reclaims B's share within seconds accrues a small fraction of that (the rule's arithmetic, not a
+measurement). Vanilla is the scheduler this describes: it has no fair-share mechanism and its claim
+expects `not_supported`, yet it can still read `supported` as A's jobs churn, so read
+`worst_shortfall_gpu_s` before taking a vanilla finding here as fair sharing. Compare the shortfall and
 `jain_median` across profiles, not just the outcome.
 
 **On Kueue** each tenant is a ClusterQueue with a 16-GPU nominal quota in one cohort, with
@@ -277,8 +280,9 @@ make report RUN=results/<run-id> OUT=/tmp/scs-rebuild
 
 `cmd/scs-report` reads `manifest.json` (for the run ID), and each profile's `events.jsonl`,
 `probes.json` and `claims.yaml`, and writes `summary.md` and `<profile>/verdicts.json`. No cluster is
-needed, and the output matches the run's own files byte for byte; the suite checks this at the end of
-every profile. Without `OUT` it rewrites the files in the run directory. It exits 2 on a usage error and
+needed, and the output matches the run's own files byte for byte. At the end of every profile the
+suite re-evaluates that profile's verdicts from the files on disk and fails if any differs from the
+verdict the probe computed live. Without `OUT` it rewrites the files in the run directory. It exits 2 on a usage error and
 1 on a run it cannot read, and writes nothing in that case.
 
 Rebuilding is how a change to a verdict rule is checked against old evidence: rebuild an old run with

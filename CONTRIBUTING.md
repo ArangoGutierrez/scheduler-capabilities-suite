@@ -12,7 +12,7 @@ in `go.mod`, so `go tool ginkgo` needs no separate install.
 ## Checks before a commit
 
 ```sh
-make test   # every unit suite, no cluster, under a minute
+make test   # every unit suite, no cluster; about 3 minutes on the first build, under a minute after
 make lint   # go vet, gofmt, and the verdict package's no-fused-multiply-add check
 ```
 
@@ -81,8 +81,10 @@ A probe is a scenario in `test/e2e/` and a verdict rule in `pkg/verdict/`. For a
 6. **Job features**: if the scenario needs something `workload.Job` cannot express, add the field and
    its check to `pkg/workload/workload.go`, then teach each profile's `Submit` in `pkg/scheduler/vanilla`
    and `pkg/scheduler/kueue`.
-7. **Docs**: the label and parameters in [docs/options.md](docs/options.md), and the measurements and
-   what the verdict can claim in [docs/results.md](docs/results.md).
+7. **Docs**: the label and parameters in [docs/options.md](docs/options.md); the measurements and
+   what the verdict can claim in [docs/results.md](docs/results.md); the probe order in step 5 of
+   [docs/architecture.md](docs/architecture.md#data-flow); and, for a capability, its row in the
+   capability table of the [README](README.md).
 
 A **control** is added the same way, except that it gets a constant but no place in `Capabilities` and
 no claim, and its spec skips the profiles it does not apply to (see `gang-control` in

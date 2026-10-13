@@ -6,7 +6,7 @@
 |---|---|
 | `make test` | every unit suite, no cluster: `go tool ginkgo --no-color -r --skip-package=e2e --label-filter='!toolchain && !live'` |
 | `make lint` | `go vet ./...`, `gofmt -l .` (fails if it lists any file), and the `toolchain` specs of `pkg/verdict`, which compile the package for arm64 and for amd64 with `GOAMD64=v3` and fail on any fused multiply-add instruction |
-| `make e2e` | `hack/e2e.sh "$(SCHEDULER)" "$(RUN_ID)" "$(RESULTS)" "$(FOCUS)"`: the e2e suite once per profile, one cluster at a time |
+| `make e2e` | `hack/e2e.sh "$(SCHEDULER)" "$(RUN_ID)" "$(RESULTS)" "$(FOCUS)"`: the e2e suite once per profile, one cluster at a time within one invocation |
 | `make report` | `go run ./cmd/scs-report [-out $(OUT)] $(RUN)`: rebuild `verdicts.json` and `summary.md` from a recorded run |
 
 ## Make variables
@@ -63,6 +63,11 @@ make e2e SCHEDULER=vanilla FOCUS=gang                     # gang only, not gang-
 make e2e SCHEDULER=vanilla FOCUS='gang || gang-control'   # the probe and its control
 make e2e SCHEDULER=kueue FOCUS='!topology'                # every probe except topology
 ```
+
+A `FOCUS` that matches no label (a typo such as `fairshare`) runs nothing and still exits 0: Ginkgo
+prints `Will run 0 of 8 specs`, skips the suite setup (no cluster is created), and the run directory
+gets only `ginkgo.log` and `ginkgo-report.json`, no `summary.md`. Check the `Will run N of 8 specs`
+line.
 
 ## Probe parameters
 
