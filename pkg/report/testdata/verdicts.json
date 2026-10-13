@@ -1,0 +1,104 @@
+[
+  {
+    "capability": "gang",
+    "profile": "vanilla",
+    "documented": {
+      "claim": "Gangs are placed whole.",
+      "citation": "https://example.org/g",
+      "expected": "supported",
+      "mechanism": "fixture"
+    },
+    "observed": {
+      "capability": "gang",
+      "outcome": "supported",
+      "reason": "no gang was partly placed for more than 5 s, and all 2 gangs completed",
+      "measurements": {
+        "gangs": 2,
+        "gangs_completed": 2,
+        "max_partial_s": 0.5
+      },
+      "evidence_seq": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        14,
+        15,
+        16,
+        21,
+        22,
+        26,
+        28,
+        30,
+        31,
+        37,
+        38
+      ]
+    },
+    "agree": true
+  },
+  {
+    "capability": "gang-control",
+    "profile": "vanilla",
+    "observed": {
+      "capability": "gang-control",
+      "outcome": "partial",
+      "reason": "gang gang-b was partly placed for 21.5 s; all 2 gangs completed",
+      "measurements": {
+        "gangs": 2,
+        "gangs_completed": 2,
+        "max_partial_s": 21.5
+      },
+      "evidence_seq": [
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+        12,
+        17,
+        18,
+        19,
+        23,
+        24,
+        25,
+        27,
+        29,
+        36
+      ]
+    }
+  },
+  {
+    "capability": "priority",
+    "profile": "vanilla",
+    "documented": {
+      "claim": "High priority goes first.",
+      "citation": "https://example.org/p",
+      "expected": "supported",
+      "mechanism": "fixture"
+    },
+    "observed": {
+      "capability": "priority",
+      "outcome": "not_supported",
+      "reason": "all 1 queued lower-priority jobs were scheduled before the high-priority job",
+      "measurements": {
+        "high_time_to_schedule_s": 37,
+        "queued_before_high": 1,
+        "queued_jobs": 1
+      },
+      "evidence_seq": [
+        13,
+        20,
+        32,
+        33,
+        34,
+        35,
+        39,
+        40
+      ]
+    },
+    "agree": false
+  }
+]
