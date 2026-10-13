@@ -1,13 +1,14 @@
 #!/bin/bash
 # Prepare a Linux VM (amd64 or arm64) for a full suite run: install Go
 # 1.27.2, verified by sha256, under $PREFIX (default $HOME/.local), and check
-# Docker access, the tools the Makefile uses, and that five hosts the suite
-# pulls from (registry-1.docker.io, registry.k8s.io, github.com,
+# Docker access, the tools the Makefile uses, and that five hosts
+# (registry-1.docker.io, registry.k8s.io, github.com,
 # raw.githubusercontent.com and proxy.golang.org) answer over HTTPS at their
 # root path. It does not probe the hosts those send a client on to, such as
-# Docker Hub's token service (auth.docker.io) or the *-docker.pkg.dev host
-# registry.k8s.io redirects image pulls to, so a pull can still fail behind
-# an egress allowlist that names only these five.
+# Docker Hub's token service (auth.docker.io), the *-docker.pkg.dev host
+# registry.k8s.io redirects manifest requests to, or cdn.registry.k8s.io,
+# which serves its image layers, so a pull can still fail behind an egress
+# allowlist that names only these five.
 #   bash hack/vm-bootstrap.sh
 set -euo pipefail
 GO_VERSION=1.27.2
