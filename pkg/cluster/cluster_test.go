@@ -34,6 +34,8 @@ type fakeProvider struct {
 	opts      []kindcluster.CreateOption
 	deleted   []string
 	deletedKC []string
+	// onDelete, when set, runs inside Delete, before it returns
+	onDelete func()
 }
 
 func (f *fakeProvider) List() ([]string, error) { return f.existing, nil }
@@ -48,6 +50,9 @@ func (f *fakeProvider) Create(name string, opts ...kindcluster.CreateOption) err
 func (f *fakeProvider) Delete(name, kubeconfig string) error {
 	f.deleted = append(f.deleted, name)
 	f.deletedKC = append(f.deletedKC, kubeconfig)
+	if f.onDelete != nil {
+		f.onDelete()
+	}
 	return f.deleteErr
 }
 func (f *fakeProvider) CollectLogs(_, _ string) error { return nil }
@@ -159,6 +164,21 @@ var _ = Describe("Create's lock", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(p.created).To(Equal([]string{"scs-vanilla"}))
 		Expect(second.Delete()).To(Succeed())
+	})
+
+	It("asks kind to delete the cluster while it still holds the lock", func() {
+		cfg := testConfig("scs-vanilla", filepath.Join(GinkgoT().TempDir(), "kc"))
+		writeKubeconfig(cfg.Kubeconfig)
+		p := &fakeProvider{createOK: true}
+		// a second run that tries to start while kind is deleting the cluster
+		var during error
+		p.onDelete = func() { _, during = Create(&fakeProvider{createOK: true}, cfg) }
+		c, err := Create(p, cfg)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Delete()).To(Succeed())
+		Expect(p.deleted).To(Equal([]string{"scs-vanilla"}))
+		Expect(p.deletedKC).To(Equal([]string{cfg.Kubeconfig}))
+		Expect(during).To(MatchError("another suite run holds " + filepath.Join(cfg.LockDir, "scs-vanilla.lock") + "; the suite runs one cluster per profile at a time"))
 	})
 
 	DescribeTable("releases the lock when Create fails",
