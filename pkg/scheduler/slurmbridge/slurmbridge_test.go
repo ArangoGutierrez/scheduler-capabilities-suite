@@ -206,10 +206,11 @@ var _ = Describe("InstallObjects", func() {
 		Expect(err).NotTo(HaveOccurred())
 		return string(raw)
 	}
+	// random counts modulo the prime 251, so its two 768-byte halves differ.
 	random := func() *bytes.Reader {
 		b := make([]byte, 2*768)
 		for i := range b {
-			b[i] = byte(i * 7)
+			b[i] = byte(i % 251)
 		}
 		return bytes.NewReader(b)
 	}
@@ -276,8 +277,8 @@ var _ = Describe("InstallObjects", func() {
 		Expect(slurmKey).To(HaveLen(1024))
 		Expect(jwtKey).To(HaveLen(1024))
 		Expect(slurmKey).NotTo(Equal(jwtKey))
-		// the first three bytes of the reader, 0x00 0x07 0x0e, in base64
-		Expect(slurmKey[:4]).To(Equal("AAcO"))
+		// the first three bytes of the reader, 0x00 0x01 0x02, in base64
+		Expect(slurmKey[:4]).To(Equal("AAEC"))
 	})
 
 	It("names the Secret it could not fill when the random source runs dry", func() {
