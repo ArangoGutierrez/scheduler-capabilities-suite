@@ -35,7 +35,7 @@ type Scenario struct {
 
 // Profile is one scheduler under test.
 type Profile interface {
-	// Name is "vanilla" or "kueue".
+	// Name is "vanilla", "kueue" or "kai".
 	Name() string
 	// ClaimsFile is the path of the scheduler's claims, relative to the repository root.
 	ClaimsFile() string

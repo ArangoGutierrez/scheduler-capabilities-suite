@@ -17,7 +17,7 @@ lint:
 	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	$(GO) tool ginkgo --no-color --fail-on-empty --label-filter=toolchain ./pkg/verdict
 
-## e2e: SCHEDULER=vanilla|kueue|all, FOCUS=<ginkgo label filter> for one probe
+## e2e: SCHEDULER=vanilla|kueue|kai|all, FOCUS=<ginkgo label filter> for one probe
 e2e:
 	bash hack/e2e.sh "$(SCHEDULER)" "$(RUN_ID)" "$(RESULTS)" "$(FOCUS)"
 
