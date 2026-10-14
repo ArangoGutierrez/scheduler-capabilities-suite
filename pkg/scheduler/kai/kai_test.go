@@ -507,6 +507,19 @@ var _ = Describe("Submit and Remove", func() {
 		Expect(kai.New().Remove(ctx, c, j)).To(Succeed())
 	})
 
+	It("deletes the Job with background propagation, so its pods go with it", func(ctx SpecContext) {
+		c := newCluster()
+		Expect(kai.New().Submit(ctx, c, j)).To(Succeed())
+		var policies []*metav1.DeletionPropagation
+		c.Clientset.(*fake.Clientset).PrependReactor("delete", "jobs", func(a k8stesting.Action) (bool, runtime.Object, error) {
+			policies = append(policies, a.(k8stesting.DeleteActionImpl).DeleteOptions.PropagationPolicy)
+			return false, nil, nil
+		})
+		Expect(kai.New().Remove(ctx, c, j)).To(Succeed())
+		Expect(policies).To(HaveLen(1))
+		Expect(policies[0]).To(HaveValue(Equal(metav1.DeletionPropagation("Background"))))
+	})
+
 	It("refuses an invalid job before creating anything", func(ctx SpecContext) {
 		c := newCluster()
 		bad := j
