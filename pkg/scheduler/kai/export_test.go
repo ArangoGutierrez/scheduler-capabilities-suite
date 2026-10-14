@@ -4,3 +4,4 @@ package kai
 var CheckSum = checkSum
 var InstallObjects = installObjects
 var WaitReady = waitReady
+var Base = base

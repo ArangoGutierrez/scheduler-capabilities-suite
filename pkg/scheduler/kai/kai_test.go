@@ -291,6 +291,38 @@ var _ = Describe("WaitReady", func() {
 	})
 })
 
+var _ = Describe("Base", func() {
+	decode := func() []*unstructured.Unstructured {
+		objs, err := apply.Decode([]byte(kai.Base))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(objs).To(HaveLen(3))
+		return objs
+	}
+
+	It("installs scs-high above scs-low, the classes the PodGroups and pods name", func() {
+		objs := decode()
+		Expect(objs[0].GetKind() + " " + objs[0].GetName()).To(Equal("PriorityClass scs-low"))
+		Expect(objs[1].GetKind() + " " + objs[1].GetName()).To(Equal("PriorityClass scs-high"))
+		low, high := objs[0].Object["value"], objs[1].Object["value"]
+		Expect(low).To(BeNumerically("==", 100))
+		Expect(high).To(BeNumerically("==", 1000))
+		Expect(high).To(BeNumerically(">", low))
+	})
+
+	It("installs scs-topology with the fleet's block, rack and host labels, outermost first", func() {
+		topo := decode()[2]
+		Expect(topo.GetAPIVersion() + " " + topo.GetKind() + " " + topo.GetName()).To(Equal("kai.scheduler/v1alpha1 Topology scs-topology"))
+		levels, found, err := unstructured.NestedSlice(topo.Object, "spec", "levels")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(levels).To(Equal([]any{
+			map[string]any{"nodeLabel": "scs.arangogutierrez.github.io/block"},
+			map[string]any{"nodeLabel": "scs.arangogutierrez.github.io/rack"},
+			map[string]any{"nodeLabel": "kubernetes.io/hostname"},
+		}))
+	})
+})
+
 var _ = Describe("Queues", func() {
 	a := scheduler.Tenant{Name: "a", Namespace: "scs-fair-share-a", EntitlementGPUs: 16}
 	b := scheduler.Tenant{Name: "b", Namespace: "scs-fair-share-b", EntitlementGPUs: 16}
