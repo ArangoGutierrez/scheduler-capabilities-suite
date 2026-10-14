@@ -1,7 +1,9 @@
 # Documented claims for the KAI Scheduler v0.18.5 profile. Each claim is
-# quoted from the file cited, at tag v0.18.5 (commit
-# 36b2cabb463ef63e9cbde73c17ca8e4eac644f11), read and checked on 2026-10-14.
-# expected is the outcome the documentation implies under the suite's rule.
+# quoted from the file cited, with markdown emphasis removed, at tag v0.18.5
+# (commit 36b2cabb463ef63e9cbde73c17ca8e4eac644f11), read and checked on
+# 2026-10-14. backfill has no such claim to quote: its claim says so and
+# quotes the nearest sentence. expected is the outcome the documentation
+# implies under the suite's rule.
 scheduler: kai
 version: KAI Scheduler v0.18.5 on Kubernetes v1.37.0
 claims:
