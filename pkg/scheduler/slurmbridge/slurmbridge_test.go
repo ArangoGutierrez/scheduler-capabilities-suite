@@ -3,6 +3,7 @@ package slurmbridge_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"io/fs"
@@ -53,6 +54,12 @@ var _ = Describe("Profile", func() {
 		Expect(p.Name()).To(Equal("slurm-bridge"))
 		Expect(p.ClaimsFile()).To(Equal("claims/slurm-bridge.yaml"))
 		Expect(p.WorkloadGVR()).To(BeNil())
+	})
+
+	It("takes Install's keys from crypto/rand and bounds Cleanup at 2 minutes", func() {
+		p := slurmbridge.New()
+		Expect(slurmbridge.KeySource(p)).To(BeIdenticalTo(rand.Reader))
+		Expect(slurmbridge.CleanupBound(p)).To(Equal(2 * time.Minute))
 	})
 })
 
@@ -285,6 +292,22 @@ var _ = Describe("InstallObjects", func() {
 		_, _, err := slurmbridge.InstallObjects(bytes.NewReader(make([]byte, 1000)))
 		Expect(err).To(MatchError("slurm-bridge: generate jwt.key: unexpected EOF"))
 	})
+
+	It("is what Install applies, with keys read from the profile's key source", func() {
+		objs, _, err := slurmbridge.ProfileObjects(slurmbridge.NewWith(random(), 2*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(keyOf(find(objs, "Secret", "slurm-auth-slurm"), "slurm.key")[:4]).To(Equal("AAEC"))
+	})
+
+	It("gives every install of the profile fresh keys", func() {
+		first, _, err := slurmbridge.ProfileObjects(slurmbridge.New())
+		Expect(err).NotTo(HaveOccurred())
+		second, _, err := slurmbridge.ProfileObjects(slurmbridge.New())
+		Expect(err).NotTo(HaveOccurred())
+		for _, s := range []struct{ name, key string }{{"slurm-auth-slurm", "slurm.key"}, {"slurm-auth-jwt", "jwt.key"}} {
+			Expect(keyOf(find(first, "Secret", s.name), s.key)).NotTo(Equal(keyOf(find(second, "Secret", s.name), s.key)), s.name)
+		}
+	})
 })
 
 var _ = Describe("FailOnDelete", func() {
@@ -492,6 +515,14 @@ var _ = Describe("WaitReady", func() {
 		Expect(err).To(MatchError("slurm-bridge not ready after 200ms: deployment slurm/slurm-bridge-scheduler is not available"))
 		Expect(paths).To(BeEmpty())
 	})
+	It("reports the bound in effect when its context ends before the timeout", func(ctx SpecContext) {
+		var paths []string
+		cs := fake.NewClientset(objects(corev1.ConditionFalse, tainted("n2"))...)
+		short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+		defer cancel()
+		err := slurmbridge.WaitReady(short, cs, answer(&paths, ready, nil), names, 10*time.Millisecond, 5*time.Second)
+		Expect(err).To(MatchError("slurm-bridge not ready after 300ms: deployment slurm/slurm-bridge-scheduler is not available"))
+	})
 	It("names the last slurmrestd error", func(ctx SpecContext) {
 		var paths []string
 		cs := fake.NewClientset(objects(corev1.ConditionTrue, tainted("n2"))...)
@@ -556,6 +587,13 @@ var _ = Describe("WaitJobsGone", func() {
 		get := func(context.Context, string) ([]byte, error) { return []byte(jobsJSON), nil }
 		err := slurmbridge.WaitJobsGone(ctx, get, s, 10*time.Millisecond, 200*time.Millisecond)
 		Expect(err).To(MatchError("slurm-bridge: probe gang left Slurm jobs after 200ms: 7 (RUNNING), 9 (PENDING)"))
+	})
+	It("reports the bound in effect when its context ends before the timeout", func(ctx SpecContext) {
+		get := func(context.Context, string) ([]byte, error) { return []byte(jobsJSON), nil }
+		short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+		defer cancel()
+		err := slurmbridge.WaitJobsGone(short, get, s, 10*time.Millisecond, 5*time.Second)
+		Expect(err).To(MatchError("slurm-bridge: probe gang left Slurm jobs after 300ms: 7 (RUNNING), 9 (PENDING)"))
 	})
 	It("names the last slurmrestd error when it never answers", func(ctx SpecContext) {
 		get := func(context.Context, string) ([]byte, error) { return nil, errors.New("connection refused") }
@@ -759,10 +797,10 @@ var _ = Describe("Submit and Remove", func() {
 })
 
 var _ = Describe("Cleanup", func() {
-	It("asks slurmrestd for the jobs and returns when none of the probe's is live", func(ctx SpecContext) {
-		var paths []string
+	// slurmrestd answers jobsJSON through the service proxy, recording paths.
+	restCluster := func(paths *[]string) *cluster.Cluster {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.URL.Path)
+			*paths = append(*paths, r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			if strings.HasSuffix(r.URL.Path, "/secrets/slurm-bridge-token") {
 				_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"Secret","metadata":{"name":"slurm-bridge-token"},"data":{"auth-token":"dG9r"}}`))
@@ -773,12 +811,24 @@ var _ = Describe("Cleanup", func() {
 		DeferCleanup(srv.Close)
 		cs, err := kubernetes.NewForConfig(&rest.Config{Host: srv.URL})
 		Expect(err).NotTo(HaveOccurred())
+		return &cluster.Cluster{Clientset: cs}
+	}
+
+	It("asks slurmrestd for the jobs and returns when none of the probe's is live", func(ctx SpecContext) {
+		var paths []string
 		s := scheduler.Scenario{Probe: "topology", Tenants: []scheduler.Tenant{{Name: "t1", Namespace: "scs-topology-t1", EntitlementGPUs: 32}}}
-		Expect(slurmbridge.New().Cleanup(ctx, &cluster.Cluster{Clientset: cs}, s)).To(Succeed())
+		Expect(slurmbridge.New().Cleanup(ctx, restCluster(&paths), s)).To(Succeed())
 		Expect(paths).To(Equal([]string{
 			"/api/v1/namespaces/slurm/secrets/slurm-bridge-token",
 			"/api/v1/namespaces/slurm/services/slurm-restapi:6820/proxy/slurm/v0.0.44/jobs",
 		}))
+	})
+
+	It("gives up at the profile's bound, naming the probe's live jobs", func(ctx SpecContext) {
+		var paths []string
+		s := scheduler.Scenario{Probe: "gang", Tenants: []scheduler.Tenant{{Name: "t1", Namespace: "scs-gang-t1", EntitlementGPUs: 32}}}
+		err := slurmbridge.NewWith(rand.Reader, 300*time.Millisecond).Cleanup(ctx, restCluster(&paths), s)
+		Expect(err).To(MatchError("slurm-bridge: probe gang left Slurm jobs after 300ms: 7 (RUNNING), 9 (PENDING)"))
 	})
 })
 
