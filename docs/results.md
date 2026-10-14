@@ -228,8 +228,8 @@ The three delay measurements are absent when the gang never started.
 **Attribution.** Only the time short jobs held nodes past the earliest start counts against them. The
 rest of the gang's delay is the scheduler's own start latency (on vanilla, a waiting gang's retry
 backoff can add up to about 17 s), recorded separately as `big_start_after_free_s` so it is not blamed
-on backfill. Neither profile documents a
-reservation for a waiting gang, so both claims expect `partial`.
+on backfill. None of the three profiles documents a
+reservation for a waiting gang, so all three claims expect `partial`.
 
 ### topology
 

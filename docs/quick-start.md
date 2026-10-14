@@ -20,8 +20,8 @@ images, so it needs network access to Docker Hub, `registry.k8s.io` and, for the
 plus `proxy.golang.org` for Go modules.
 
 The suite does not enforce a CPU or memory minimum. What has been measured: one probe at a time on a
-laptop works; a full run of both profiles took about 15 minutes on a 12-vCPU, 22 GiB Linux VM. See
-[Laptop or VM](#laptop-or-vm) before a full run.
+laptop works; a full run of the vanilla and kueue profiles took about 15 minutes on a 12-vCPU, 22 GiB
+Linux VM. The kai profile has not been timed yet. See [Laptop or VM](#laptop-or-vm) before a full run.
 
 ## 2. Clone and run the unit specs
 
@@ -144,7 +144,7 @@ first install waits one to four minutes for its webhook to answer.
 
 - **One probe at a time on a laptop is fine.**
 - **One `make e2e` at a time per host.** The cluster lock refuses a second run of the same profile, but
-  not a run of the other profile, and two clusters side by side compete for CPU and disk.
+  not a run of another profile, and two clusters side by side compete for CPU and disk.
 - **A full run belongs on a Linux VM.** On a laptop an etcd fsync stall (2.3 s) once restarted the
   scheduler, the controller-manager and Kueue mid-run. The suite treats a control-plane restart during a
   probe as a harness failure, so such a run is red, not wrong, but it is wasted.
@@ -164,8 +164,9 @@ user can reach the Docker daemon, installs Go 1.27.2 (verified by sha256) under 
 `auth.docker.io` or `cdn.registry.k8s.io`), so an image pull can still fail behind a strict egress
 allowlist.
 
-A full run takes about 15 minutes on a 12-vCPU, 22 GiB VM. Run it under `tmux` or `nohup`: closing the
-terminal kills it without cleanup.
+A full run of the vanilla and kueue profiles takes about 15 minutes on a 12-vCPU, 22 GiB VM; the kai
+profile has not been timed yet. Run it under `tmux` or `nohup`: closing the terminal kills it without
+cleanup.
 
 ## 6. Interrupting and cleaning up
 

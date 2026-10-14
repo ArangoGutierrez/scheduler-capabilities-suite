@@ -1,7 +1,8 @@
 # Unit specs and lint on every pull request and every push to main.
 #
 # The e2e probes are not run here: they need a kind cluster with kwok and,
-# for both profiles, about 15 minutes on a 12-vCPU VM. Run them with
+# for the vanilla and kueue profiles, about 15 minutes on a 12-vCPU VM (the
+# kai profile has not been timed yet). Run them with
 # `make e2e` on a machine that can host the cluster.
 #
 # Actions are pinned to full commit SHAs; Dependabot proposes the bumps.
