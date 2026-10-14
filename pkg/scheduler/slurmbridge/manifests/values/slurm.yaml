@@ -1,0 +1,55 @@
+# Values for the slurm 1.2.3 chart, namespace slurm. configFiles, nodesets
+# and the first four lines of controller.extraConf are slurm-bridge v1.2.3's
+# hack/slurm-bridge-external.yaml, unchanged; partition slurm-bridge keeps
+# Slurm's default PriorityTier, 1. The profile adds partition-tier
+# preemption (PreemptType, PreemptMode, the slurm-bridge-preempt partition at
+# PriorityTier 2 over the same nodes), pins every image by digest, and
+# points the chart at the slurm-auth-slurm and slurm-auth-jwt Secrets that
+# Install generates instead of rendering them.
+slurmKey:
+  create: false
+  secretRef:
+    name: slurm-auth-slurm
+    key: slurm.key
+jwtKey:
+  create: false
+  secretRef:
+    name: slurm-auth-jwt
+    key: jwt.key
+configFiles:
+  topology.yaml: |
+    ---
+    - topology: topo-switch
+      cluster_default: true
+      tree:
+        switches:
+          - switch: sw_root
+            children: s[1-2]
+          - switch: s1
+          - switch: s2
+nodesets:
+  slinky:
+    enabled: false
+controller:
+  extraConf: |
+    ReconfigFlags=KeepPartInfo
+    GresTypes=gpu
+    Nodeset=slurm-bridge Feature=slurm-bridge
+    PartitionName=slurm-bridge Nodes=slurm-bridge State=UP Default=NO
+    PreemptType=preempt/partition_prio
+    PreemptMode=CANCEL
+    Nodeset=slurm-bridge-preempt Feature=slurm-bridge-preempt
+    PartitionName=slurm-bridge-preempt Nodes=slurm-bridge-preempt State=UP Default=NO PriorityTier=2
+  slurmctld:
+    image:
+      digest: sha256:e5fa6666bd890f522a23cd292d17e57438f08260aaffd5aed652c0c6cf29687c
+  reconfigure:
+    image:
+      digest: sha256:e5fa6666bd890f522a23cd292d17e57438f08260aaffd5aed652c0c6cf29687c
+  logfile:
+    image:
+      digest: sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+restapi:
+  slurmrestd:
+    image:
+      digest: sha256:5009b8020b6dd734819f70b4cbe117934054dae4346dde6ecb50ae0ca2896c60
