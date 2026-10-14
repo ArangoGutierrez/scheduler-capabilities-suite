@@ -41,7 +41,7 @@ type Config struct {
 	LockDir       string
 }
 
-// SuiteConfig returns the configuration both profiles use: the Workload API
+// SuiteConfig returns the configuration every profile uses: the Workload API
 // served, and GenericWorkload (gangs, workload-aware preemption) and
 // TopologyAwareWorkloadScheduling (alpha; PodGroup topology constraints) on
 // in every component. The lock lives in /tmp, a fixed path, because

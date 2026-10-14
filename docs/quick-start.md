@@ -2,7 +2,7 @@
 
 This page takes you from a fresh clone to one recorded probe and an offline rebuild of its results.
 A **probe** is one capability scenario (gang, priority, preemption, fair-share, backfill, topology) run
-against one scheduler **profile** (`vanilla` or `kueue`) on a fresh kind cluster.
+against one scheduler **profile** (`vanilla`, `kueue` or `kai`) on a fresh kind cluster.
 
 ## 1. Prerequisites
 
@@ -13,14 +13,15 @@ against one scheduler **profile** (`vanilla` or `kueue`) on a fresh kind cluster
 | make, bash, git | `make --version`, `bash --version`, `git --version` | any version |
 | CPUs and memory given to Docker | `docker info --format '{{.NCPU}} CPUs, {{.MemTotal}} bytes'` | see below |
 
-You do not need the kind CLI, kwok, Kueue or Ginkgo installed: kind is used as a Go library, Ginkgo runs
-as `go tool ginkgo`, and the kwok and Kueue manifests are embedded in the repository. The first run pulls
-the pinned kind node image and the kwok and Kueue controller images, so it needs network access to
-Docker Hub and `registry.k8s.io`, plus `proxy.golang.org` for Go modules.
+You do not need the kind CLI, kwok, Kueue, KAI, helm or Ginkgo installed: kind is used as a Go library,
+Ginkgo runs as `go tool ginkgo`, and the kwok and Kueue manifests and the KAI chart render are embedded
+in the repository. The first run pulls the pinned kind node image and the kwok, Kueue and KAI controller
+images, so it needs network access to Docker Hub, `registry.k8s.io` and, for the kai profile, `ghcr.io`,
+plus `proxy.golang.org` for Go modules.
 
 The suite does not enforce a CPU or memory minimum. What has been measured: one probe at a time on a
-laptop works; a full run of both profiles took about 15 minutes on a 12-vCPU, 22 GiB Linux VM. See
-[Laptop or VM](#laptop-or-vm) before a full run.
+laptop works; a full run of the vanilla and kueue profiles took about 15 minutes on a 12-vCPU, 22 GiB
+Linux VM. The kai profile has not been timed yet. See [Laptop or VM](#laptop-or-vm) before a full run.
 
 ## 2. Clone and run the unit specs
 
@@ -135,15 +136,15 @@ Without `OUT`, `make report` rewrites the files inside the run directory.
 make e2e
 ```
 
-With no `FOCUS` and the default `SCHEDULER=all`, every probe runs on `vanilla` and then on `kueue`, one
-cluster at a time (`scs-vanilla`, then `scs-kueue`), into one run directory. Kueue's first install waits
-one to four minutes for its webhook to answer.
+With no `FOCUS` and the default `SCHEDULER=all`, every probe runs on `vanilla`, then on `kueue`, then on
+`kai`, one cluster at a time (`scs-vanilla`, `scs-kueue`, `scs-kai`), into one run directory. Kueue's
+first install waits one to four minutes for its webhook to answer.
 
 ### Laptop or VM
 
 - **One probe at a time on a laptop is fine.**
 - **One `make e2e` at a time per host.** The cluster lock refuses a second run of the same profile, but
-  not a run of the other profile, and two clusters side by side compete for CPU and disk.
+  not a run of another profile, and two clusters side by side compete for CPU and disk.
 - **A full run belongs on a Linux VM.** On a laptop an etcd fsync stall (2.3 s) once restarted the
   scheduler, the controller-manager and Kueue mid-run. The suite treats a control-plane restart during a
   probe as a harness failure, so such a run is red, not wrong, but it is wasted.
@@ -163,8 +164,9 @@ user can reach the Docker daemon, installs Go 1.27.2 (verified by sha256) under 
 `auth.docker.io` or `cdn.registry.k8s.io`), so an image pull can still fail behind a strict egress
 allowlist.
 
-A full run takes about 15 minutes on a 12-vCPU, 22 GiB VM. Run it under `tmux` or `nohup`: closing the
-terminal kills it without cleanup.
+A full run of the vanilla and kueue profiles takes about 15 minutes on a 12-vCPU, 22 GiB VM; the kai
+profile has not been timed yet. Run it under `tmux` or `nohup`: closing the terminal kills it without
+cleanup.
 
 ## 6. Interrupting and cleaning up
 
@@ -186,7 +188,7 @@ kind delete cluster --name scs-vanilla                    # with the kind CLI
 go run sigs.k8s.io/kind delete cluster --name scs-vanilla # without it, from this checkout
 ```
 
-Only delete `scs-vanilla` or `scs-kueue`; the suite never touches any other kind cluster.
+Only delete `scs-vanilla`, `scs-kueue` or `scs-kai`; the suite never touches any other kind cluster.
 
 ## 7. Troubleshooting
 
@@ -207,6 +209,13 @@ new one.
 That is Kueue's webhook coming up: one to four minutes on a first install, and the suite allows eight
 before it fails with `kueue webhook not ready after 8m0s: <last error>`. The wait it took is recorded in
 `manifest.json` as `profiles.kueue.scheduler.kueue_webhook_wait`.
+
+**The kai profile sits at "installing the kai profile" for minutes.**
+KAI's operator creates the scheduler, binder, admission and queue controllers, and their webhooks, after
+the chart's objects are applied, so the suite waits until those Deployments are available and the
+webhooks answer a dry-run Queue, PodGroup and Pod. It allows eight minutes before it fails with
+`kai not ready after 8m0s: <last error>`. The wait it took is recorded in `manifest.json` as
+`profiles.kai.scheduler.kai_ready_wait`.
 
 **`kwok: controller not available: ...`, or the fleet never becomes ready.**
 The suite allows 6 minutes for the kwok controller to become available and 2 minutes for the four fake

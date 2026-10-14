@@ -1,11 +1,11 @@
 #!/bin/bash
 # Run the e2e suite once per profile, one cluster at a time.
 #   hack/e2e.sh PROFILES RUN_ID RESULTS [LABEL_FILTER]
-# PROFILES is "vanilla", "kueue" or "all". LABEL_FILTER (a Ginkgo label
+# PROFILES is "vanilla", "kueue", "kai" or "all". LABEL_FILTER (a Ginkgo label
 # expression such as "gang") runs only matching probes.
 set -u
 profiles=$1 run_id=$2 results=$3 filter=${4:-}
-[ "$profiles" = all ] && profiles="vanilla kueue"
+[ "$profiles" = all ] && profiles="vanilla kueue kai"
 # A run that cannot name its commit cannot be tied to its code: stop before
 # anything is created.
 commit=$(git rev-parse --short HEAD) || { echo "e2e: git cannot read this checkout (copy it as a git clone)" >&2; exit 2; }

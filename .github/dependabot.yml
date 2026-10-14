@@ -2,7 +2,8 @@
 # PR per ecosystem so the k8s.io modules move together.
 #
 # Not covered, bump by hand: the kindest/node image digest (pkg/cluster),
-# the kwok release (pkg/kwok) and the Kueue release (pkg/scheduler/kueue).
+# the kwok release (pkg/kwok), the Kueue release (pkg/scheduler/kueue) and
+# the KAI Scheduler chart render (pkg/scheduler/kai).
 version: 2
 updates:
   - package-ecosystem: gomod
