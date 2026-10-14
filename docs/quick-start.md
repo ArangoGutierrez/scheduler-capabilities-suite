@@ -2,7 +2,7 @@
 
 This page takes you from a fresh clone to one recorded probe and an offline rebuild of its results.
 A **probe** is one capability scenario (gang, priority, preemption, fair-share, backfill, topology) run
-against one scheduler **profile** (`vanilla`, `kueue` or `kai`) on a fresh kind cluster.
+against one scheduler **profile** (`vanilla`, `kueue`, `kai` or `slurm-bridge`) on a fresh kind cluster.
 
 ## 1. Prerequisites
 
@@ -13,15 +13,17 @@ against one scheduler **profile** (`vanilla`, `kueue` or `kai`) on a fresh kind 
 | make, bash, git | `make --version`, `bash --version`, `git --version` | any version |
 | CPUs and memory given to Docker | `docker info --format '{{.NCPU}} CPUs, {{.MemTotal}} bytes'` | see below |
 
-You do not need the kind CLI, kwok, Kueue, KAI, helm or Ginkgo installed: kind is used as a Go library,
-Ginkgo runs as `go tool ginkgo`, and the kwok and Kueue manifests and the KAI chart render are embedded
-in the repository. The first run pulls the pinned kind node image and the kwok, Kueue and KAI controller
-images, so it needs network access to Docker Hub, `registry.k8s.io` and, for the kai profile, `ghcr.io`,
-plus `proxy.golang.org` for Go modules.
+You do not need the kind CLI, kwok, Kueue, KAI, Slurm, helm or Ginkgo installed: kind is used as a Go
+library, Ginkgo runs as `go tool ginkgo`, and the kwok and Kueue manifests, the KAI chart render and the
+slurm-bridge chart renders are embedded in the repository. The first run pulls the pinned kind node
+image and the kwok, Kueue, KAI and Slurm images, so it needs network access to Docker Hub,
+`registry.k8s.io` and, for the kai and slurm-bridge profiles, `ghcr.io`, plus `proxy.golang.org` for Go
+modules.
 
 The suite does not enforce a CPU or memory minimum. What has been measured: one probe at a time on a
 laptop works; a full run of the vanilla and kueue profiles took about 15 minutes on a 12-vCPU, 22 GiB
-Linux VM. The kai profile has not been timed yet. See [Laptop or VM](#laptop-or-vm) before a full run.
+Linux VM. The kai and slurm-bridge profiles have not been timed yet. See [Laptop or VM](#laptop-or-vm)
+before a full run.
 
 ## 2. Clone and run the unit specs
 
@@ -137,8 +139,9 @@ make e2e
 ```
 
 With no `FOCUS` and the default `SCHEDULER=all`, every probe runs on `vanilla`, then on `kueue`, then on
-`kai`, one cluster at a time (`scs-vanilla`, `scs-kueue`, `scs-kai`), into one run directory. Kueue's
-first install waits one to four minutes for its webhook to answer.
+`kai`, then on `slurm-bridge`, one cluster at a time (`scs-vanilla`, `scs-kueue`, `scs-kai`,
+`scs-slurm-bridge`), into one run directory. Kueue's first install waits one to four minutes for its
+webhook to answer.
 
 ### Laptop or VM
 
@@ -165,8 +168,8 @@ user can reach the Docker daemon, installs Go 1.27.2 (verified by sha256) under 
 allowlist.
 
 A full run of the vanilla and kueue profiles takes about 15 minutes on a 12-vCPU, 22 GiB VM; the kai
-profile has not been timed yet. Run it under `tmux` or `nohup`: closing the terminal kills it without
-cleanup.
+and slurm-bridge profiles have not been timed yet. Run it under `tmux` or `nohup`: closing the terminal
+kills it without cleanup.
 
 ## 6. Interrupting and cleaning up
 
@@ -188,7 +191,8 @@ kind delete cluster --name scs-vanilla                    # with the kind CLI
 go run sigs.k8s.io/kind delete cluster --name scs-vanilla # without it, from this checkout
 ```
 
-Only delete `scs-vanilla`, `scs-kueue` or `scs-kai`; the suite never touches any other kind cluster.
+Only delete `scs-vanilla`, `scs-kueue`, `scs-kai` or `scs-slurm-bridge`; the suite never touches any
+other kind cluster.
 
 ## 7. Troubleshooting
 
@@ -216,6 +220,14 @@ the chart's objects are applied, so the suite waits until those Deployments are 
 webhooks answer a dry-run Queue, PodGroup and Pod. It allows eight minutes before it fails with
 `kai not ready after 8m0s: <last error>`. The wait it took is recorded in `manifest.json` as
 `profiles.kai.scheduler.kai_ready_wait`.
+
+**The slurm-bridge profile sits at "installing the slurm-bridge profile" for minutes.**
+The operator creates slurmctld and slurmrestd after the renders are applied, their images are pulled,
+and slurm-bridge then registers the four fake nodes in Slurm. The suite waits until the operator and
+bridge Deployments are available, slurmrestd lists `n1` to `n4` idle in both Slurm partitions, and each
+node carries slurm-bridge's taint. It allows ten minutes before it fails with
+`slurm-bridge not ready after 10m0s: <last error>`. The wait it took is recorded in `manifest.json` as
+`profiles.slurm-bridge.scheduler.slurm_ready_wait`.
 
 **`kwok: controller not available: ...`, or the fleet never becomes ready.**
 The suite allows 6 minutes for the kwok controller to become available and 2 minutes for the four fake

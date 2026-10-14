@@ -18,9 +18,10 @@ verdict (`supported`, `partial` or `not_supported`), and compares it with the sc
 | backfill | short jobs arrive while a fleet-wide gang waits for capacity |
 | topology | a 2-pod gang must sit in one rack while the other rack has a busy node |
 
-Three profiles are measured: **vanilla** (kube-scheduler 1.37 with the Workload API), **kueue**
-(Kueue v0.20.1 in front of kube-scheduler) and **kai** (KAI Scheduler v0.18.5, which places the suite's
-pods instead of kube-scheduler).
+Four profiles are measured: **vanilla** (kube-scheduler 1.37 with the Workload API), **kueue**
+(Kueue v0.20.1 in front of kube-scheduler), **kai** (KAI Scheduler v0.18.5, which places the suite's
+pods instead of kube-scheduler) and **slurm-bridge** (slurm-bridge v1.2.3, which hands every placement
+to Slurm 26.05.4; Slurm sees whole nodes, not GPUs).
 
 ## Status
 
@@ -33,8 +34,8 @@ result to quote. Repeated runs and a spread come before any number is published.
 - Go 1.27
 - make, bash and git
 
-kind (as a Go library), Ginkgo, the kwok manifests, the Kueue manifests and the KAI chart render are
-pinned in this repository;
+kind (as a Go library), Ginkgo, the kwok manifests, the Kueue manifests, the KAI chart render and the
+slurm-bridge chart renders are pinned in this repository;
 the node and controller images are pulled on first use. [docs/quick-start.md](docs/quick-start.md) has a
 check command for each requirement.
 

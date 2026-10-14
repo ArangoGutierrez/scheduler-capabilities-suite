@@ -10,11 +10,12 @@ results/<run-id>/
   manifest.json          run ID, git commit, host, tool versions, fleet, and per profile: cluster,
                          feature gates, runtime config, image digests, kwok manifest sha256s, scheduler
                          settings (Kueue: manifest sha256, webhook wait; KAI: chart and render
-                         sha256s, readiness wait), host-to-API-server clock offset at start and end,
-                         watch errors
+                         sha256s, readiness wait; slurm-bridge: each embedded file's sha256 and
+                         source, slurm.conf additions, readiness wait), host-to-API-server clock
+                         offset at start and end, watch errors
   summary.md             capability x profile: documented | observed | agree | evidence; then
                          Findings, Controls, and profiles without verdicts
-  <profile>/             vanilla, kueue or kai
+  <profile>/             vanilla, kueue, kai or slurm-bridge
     events.jsonl         one line per observed change (below)
     probes.json          each probe: capability, parameters, end of its evidence window
     claims.yaml          the profile's documented claims, copied from claims/ at run time
@@ -22,7 +23,8 @@ results/<run-id>/
                          no claim and no agree flag)
     ginkgo-report.json   Ginkgo's JSON report; each probe attaches its verdict and its measurements
     ginkgo.log           the suite's output
-    cluster-logs/        kind export logs: scheduler, controller-manager, kwok, Kueue or KAI, kubelet
+    cluster-logs/        kind export logs: scheduler, controller-manager, kwok, Kueue, KAI or Slurm,
+                         kubelet
     scs.kubeconfig       the kind cluster's kubeconfig; kind empties it when it deletes the cluster
 ```
 

@@ -13,7 +13,7 @@
 
 | variable | default | used by | meaning |
 |---|---|---|---|
-| `SCHEDULER` | `all` | e2e | `vanilla`, `kueue`, `kai`, or `all` (vanilla, then kueue, then kai) |
+| `SCHEDULER` | `all` | e2e | `vanilla`, `kueue`, `kai`, `slurm-bridge`, or `all` (vanilla, then kueue, then kai, then slurm-bridge) |
 | `FOCUS` | empty (every probe) | e2e | a Ginkgo label filter expression; see [the labels](#probe-labels-for-focus) |
 | `RESULTS` | `$(CURDIR)/results` | e2e | parent directory of run directories; made absolute by `hack/e2e.sh` |
 | `RUN_ID` | `<UTC time %Y%m%dT%H%M%SZ>-<short commit>`, plus `-dirty` when `git status --porcelain --untracked-files=normal` is not empty | e2e | name of the run directory under `RESULTS` |
@@ -47,13 +47,13 @@ Each probe is one Ginkgo spec with one label. The probes run in this order:
 | label | file | profiles |
 |---|---|---|
 | `gang` | `test/e2e/gang_test.go` | all |
-| `gang-control` | `test/e2e/gang_test.go` | vanilla only (skipped on kueue and kai) |
+| `gang-control` | `test/e2e/gang_test.go` | vanilla only (skipped on kueue, kai and slurm-bridge) |
 | `priority` | `test/e2e/priority_test.go` | all |
 | `preemption` | `test/e2e/preemption_test.go` | all |
 | `fair-share` | `test/e2e/fairshare_test.go` | all |
 | `backfill` | `test/e2e/backfill_test.go` | all |
 | `topology` | `test/e2e/topology_test.go` | all |
-| `topology-control` | `test/e2e/topology_test.go` | vanilla only (skipped on kueue and kai) |
+| `topology-control` | `test/e2e/topology_test.go` | vanilla only (skipped on kueue, kai and slurm-bridge) |
 
 `FOCUS` takes any [Ginkgo label filter](https://onsi.github.io/ginkgo/#spec-labels) expression, for
 example:
@@ -90,7 +90,8 @@ parameters.
 
 ## Claims files
 
-`claims/vanilla.yaml`, `claims/kueue.yaml` and `claims/kai.yaml` hold each profile's documented claims.
+`claims/vanilla.yaml`, `claims/kueue.yaml`, `claims/kai.yaml` and `claims/slurm-bridge.yaml` hold each
+profile's documented claims.
 The format:
 
 ```yaml
@@ -121,9 +122,10 @@ At the end of each profile the suite copies the claims file into `<run dir>/<pro
 | kwok v0.8.0 | embedded manifests, each checked against `SHA256SUMS` at install; image `registry.k8s.io/kwok/kwok:v0.8.0` | `pkg/kwok/kwok.go`, `pkg/kwok/manifests/` |
 | Kueue v0.20.1 | embedded release manifest checked against `SHA256SUMS`; image `registry.k8s.io/kueue/kueue:v0.20.1` | `Version` in `pkg/scheduler/kueue/kueue.go`, `pkg/scheduler/kueue/manifests/` |
 | KAI Scheduler v0.18.5 | embedded render of chart `oci://ghcr.io/kai-scheduler/kai-scheduler/kai-scheduler:v0.18.5` (default values) checked against `SHA256SUMS`; images `ghcr.io/kai-scheduler/kai-scheduler/*:v0.18.5` | `Version`, `ChartOCIDigest` and `ChartSHA256` in `pkg/scheduler/kai/kai.go`, `pkg/scheduler/kai/manifests/` |
+| slurm-bridge v1.2.3, slurm-operator v1.2.3, Slurm 26.05.4 | embedded renders of the charts `oci://ghcr.io/slinkyproject/charts/{slurm-operator-crds,slurm-operator,slurm,slurm-bridge}:1.2.3` (helm v4.3.0, values in `manifests/values/`, images pinned there by digest), the scheduler-plugins v0.33.5 PodGroup CRD and slurm-bridge's `hack/token.yaml`, each checked against `SHA256SUMS`; no key or certificate is embedded: Install generates `slurm.key` and `jwt.key` | `Version`, `SlurmVersion`, `Files` and `Sources` in `pkg/scheduler/slurmbridge/slurmbridge.go`, `pkg/scheduler/slurmbridge/manifests/` |
 | kind library, client-go, Ginkgo, Gomega | `sigs.k8s.io/kind v0.33.0`, `k8s.io/client-go v0.37.1`, `ginkgo/v2 v2.33.0`, `gomega v1.44.0` | `go.mod` (Ginkgo is a `tool` dependency) |
 | Go | `go 1.27` | `go.mod`; `hack/vm-bootstrap.sh` installs 1.27.2 |
 
 Every run records the versions it actually used in `manifest.json`: tool versions, the image ID of
-every container in `kube-system`, `kueue-system` and `kai-scheduler`, each kwok manifest's sha256, and
-the Kueue manifest's or the KAI render's sha256.
+every container in `kube-system`, `kueue-system`, `kai-scheduler`, `slinky` and `slurm`, each kwok
+manifest's sha256, and the Kueue manifest's, the KAI render's or each slurm-bridge file's sha256.
