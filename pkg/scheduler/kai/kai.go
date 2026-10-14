@@ -82,7 +82,8 @@ const mutatingWebhook = "mutating-kai-admission"
 var validatingWebhooks = []string{"validating-kai-admission", "kai-queue-validation-v2", "kai-podgroup-validation-v2alpha2"}
 
 // base is created once per cluster, after KAI answers: the two
-// PriorityClasses and the topology (block, rack, host).
+// PriorityClasses and the topology (block, rack, host), its levels the
+// labels pkg/fleet puts on the nodes.
 const base = `apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata: {name: scs-low, labels: {app.kubernetes.io/part-of: scheduler-capabilities-suite}}
@@ -98,8 +99,8 @@ kind: Topology
 metadata: {name: scs-topology, labels: {app.kubernetes.io/part-of: scheduler-capabilities-suite}}
 spec:
   levels:
-  - nodeLabel: scs.arangogutierrez.github.io/block
-  - nodeLabel: scs.arangogutierrez.github.io/rack
+  - nodeLabel: ` + labels.Block + `
+  - nodeLabel: ` + labels.Rack + `
   - nodeLabel: kubernetes.io/hostname
 `
 
