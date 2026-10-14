@@ -12,7 +12,7 @@ results/<run-id>/
                          feature gates, image digests, manifest sha256s, scheduler settings,
                          clock offsets, watch errors
   summary.md             documented vs observed for every probe of every profile
-  vanilla/               one directory per profile that ran (vanilla, kueue)
+  vanilla/               one directory per profile that ran (vanilla, kueue, kai)
     events.jsonl         every recorded object change: the source of truth
     probes.json          each finished probe's parameters and window end
     claims.yaml          the claims file the run used
@@ -49,7 +49,7 @@ Run fixture-run. Each verdict comes from a single run: evidence for the POC, not
 | column | meaning |
 |---|---|
 | capability | one of gang, priority, preemption, fair-share, backfill, topology; rows follow that order |
-| profile | vanilla, then kueue |
+| profile | vanilla, then kueue, then kai |
 | documented | the `expected` outcome of the profile's claim in `claims.yaml` |
 | observed | the outcome the verdict rule computed from the recorded events |
 | agree | `yes` when documented and observed are the same outcome |
@@ -112,9 +112,10 @@ completed until it is admitted.
 ### priority
 
 **Measures** queue order: four low-priority jobs are queued, then a high-priority job arrives 2 s
-later, and nodes free up one at a time as the fillers end. Neither profile allows preemption here
+later, and nodes free up one at a time as the fillers end. No profile allows preemption here
 (vanilla's high-priority class has `preemptionPolicy: Never`; the kueue ClusterQueue has no preemption
-policy), so this probe tests queue order only.
+policy; the kai Queue protects running work for 24 h with `preemptMinRuntime` and `reclaimMinRuntime`,
+since KAI does not read `preemptionPolicy`), so this probe tests queue order only.
 
 | measurement | meaning |
 |---|---|
@@ -197,6 +198,11 @@ expects `not_supported`, yet it can still read `supported` as A's jobs churn, so
 to the whole fleet, so Kueue's fair sharing has nothing left to divide: this probe does not exercise
 fair sharing of borrowable capacity, which would need a cohort with capacity no tenant is entitled to
 (`claims/kueue.yaml`, `mechanism`).
+
+**On KAI** each tenant is a leaf Queue with a 16-GPU quota under a parent Queue for the probe, with
+`reclaimMinRuntime: 0s`. B's share comes from quota reclaim of what A holds over its quota. As on Kueue,
+the quotas add up to the fleet, so KAI's over-quota fair share has nothing to divide here
+(`claims/kai.yaml`, `mechanism`).
 
 ### backfill
 
