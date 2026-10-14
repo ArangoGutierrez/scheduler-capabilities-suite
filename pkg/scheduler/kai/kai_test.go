@@ -147,8 +147,8 @@ var _ = Describe("InstallObjects", func() {
 		}))
 		cfg := find(objs, "Config", "kai-config")
 		Expect(cfg.GetAPIVersion()).To(Equal("kai.scheduler/v1"))
-		Expect(unstructured.NestedString(cfg.Object, "spec", "namespace")).To(Equal("kai-scheduler"))
-		Expect(unstructured.NestedString(cfg.Object, "spec", "scheduler", "service", "image", "tag")).To(Equal("v0.18.5"))
+		Expect(cfg.Object["spec"]).To(HaveKeyWithValue("namespace", "kai-scheduler"))
+		Expect(cfg.Object["spec"]).To(HaveKeyWithValue("scheduler", HaveKeyWithValue("service", HaveKeyWithValue("image", HaveKeyWithValue("tag", "v0.18.5")))))
 	})
 
 	It("sets update-pod-eviction-condition on the default SchedulingShard, so evictions carry DisruptionTarget", func() {
@@ -441,7 +441,7 @@ var _ = Describe("Submit and Remove", func() {
 		Expect(order).To(Equal([]string{"podgroup", "job"}))
 		pg, err := c.Dynamic.Resource(pgGVR).Namespace("scs-gang-t1").Get(ctx, "gang-a", metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(unstructured.NestedInt64(pg.Object, "spec", "minMember")).To(Equal(int64(3)))
+		Expect(pg.Object["spec"]).To(HaveKeyWithValue("minMember", int64(3)))
 	})
 
 	It("deletes the Job and its PodGroup, and takes either already gone as done", func(ctx SpecContext) {
