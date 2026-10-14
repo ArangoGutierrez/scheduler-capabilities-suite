@@ -261,6 +261,22 @@ var _ = Describe("WaitReady", func() {
 		Expect(calls).To(Equal([]created{{"queues", ""}, {"podgroups", "default"}, {"pods", "default"}}))
 	})
 
+	It("dry-runs a Pod for kai-scheduler, the only pods KAI's pod webhooks match", func(ctx SpecContext) {
+		cs := fake.NewClientset(objects(corev1.ConditionTrue)...)
+		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+		var calls []created
+		dryRuns(&dyn.Fake, "queues", &calls, nil)
+		dryRuns(&dyn.Fake, "podgroups", &calls, nil)
+		var schedulers []string
+		cs.PrependReactor("create", "pods", func(a k8stesting.Action) (bool, runtime.Object, error) {
+			pod := a.(k8stesting.CreateAction).GetObject().(*corev1.Pod)
+			schedulers = append(schedulers, pod.Spec.SchedulerName)
+			return true, pod, nil
+		})
+		Expect(kai.WaitReady(ctx, cs, dyn, 10*time.Millisecond, 5*time.Second)).To(Succeed())
+		Expect(schedulers).To(Equal([]string{"kai-scheduler"}))
+	})
+
 	It("names a Deployment that is not available", func(ctx SpecContext) {
 		cs := fake.NewClientset(objects(corev1.ConditionFalse)...)
 		dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
