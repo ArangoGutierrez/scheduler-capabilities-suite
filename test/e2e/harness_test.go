@@ -60,7 +60,7 @@ func startScenario(ctx context.Context, s scheduler.Scenario) *probe {
 // probe's evidence.
 func controlPlaneRestarts(ctx context.Context) map[string]int32 {
 	out := map[string]int32{}
-	for _, ns := range []string{"kube-system", "kueue-system", "kai-scheduler"} {
+	for _, ns := range []string{"kube-system", "kueue-system", "kai-scheduler", "slinky", "slurm"} {
 		pods, err := env.cluster.Clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, q := range pods.Items {
