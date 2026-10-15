@@ -86,11 +86,18 @@ check failed, or the offline rebuild disagreed with the live verdicts.
 Each rule reads only its probe's events up to the probe's `window_end`. Times are the recorder's
 `observed_at`. [options.md](options.md#probe-parameters) has every scenario's jobs and parameters.
 
-**On slurm-bridge**, three caveats hold for every verdict (`claims/slurm-bridge.yaml`). Slurm sees nodes,
+**On slurm-bridge**, four caveats hold for every verdict (`claims/slurm-bridge.yaml`). Slurm sees nodes,
 not GPUs: every job drops its GPU request, and each probe pod takes a whole 8-GPU node, so node
 placement equals GPU placement here and nothing more; the profile refuses a job whose pods are not whole
 nodes. Preemption reaches Kubernetes as a plain pod deletion by slurm-bridge. Topology is Slurm's
-default switch-aware placement, since slurm-bridge cannot ask Slurm for one rack.
+default switch-aware placement, since slurm-bridge cannot ask Slurm for one rack. And slurm-bridge
+v1.2.3 submits a job to Slurm only for nodes that Kubernetes' own filters already accept (its PostFilter,
+`internal/scheduler/plugins/slurmbridge/slurmbridge.go:403-439` at v1.2.3): a pod for which Kubernetes
+sees no free node never becomes a Slurm job, so Slurm decides only among jobs Kubernetes already has room
+for. This is why Slurm's partition preemption never fires in the preemption probe and why the short jobs
+run ahead of the gang in backfill (below). Each placement has also been observed to take about 4 s in
+Slurm, every allocation logged right after slurmctld fails to resolve the external node's name; that
+the failed lookup causes the delay is not proven.
 
 ### gang
 
@@ -166,11 +173,14 @@ scheduler preemption from a Kueue suspension or a deletion. Every Job has a `bac
 Job controller does not delete the survivors itself after the first eviction. A victim pod that
 succeeded before the cut makes the probe red, since preemption was not exercised.
 
-**On slurm-bridge** the high-priority job goes to a Slurm partition of a higher `PriorityTier` over the
-same nodes, and Slurm cancels the victim gang, one Slurm job, as a whole (`PreemptMode=CANCEL`).
-slurm-bridge then deletes the victim pods, with no `DisruptionTarget` condition, so the recorder sees
+**On slurm-bridge** the high-priority job is sent to a Slurm partition of a higher `PriorityTier` over the
+same nodes, where Slurm would cancel the victim gang, one Slurm job, as a whole (`PreemptMode=CANCEL`).
+In this probe it never gets that far: the victim holds every GPU, so Kubernetes' resource filter rejects
+every node, slurm-bridge submits no Slurm job for the high-priority pods (the gating caveat above), and
+the verdict is `not_supported` although Slurm documents the preemption. Were Slurm to preempt,
+slurm-bridge would delete the victim pods with no `DisruptionTarget` condition, so the recorder would see
 deletions, not evictions; a kwok Stage moves each deleted pod to `Failed`. slurm-bridge checks its pods'
-Slurm jobs every 30 s, so the 5 s grace measures that resync as much as Slurm.
+Slurm jobs every 30 s, so the 5 s grace would measure that resync as much as Slurm.
 
 ### fair-share
 
@@ -217,10 +227,13 @@ fair sharing of borrowable capacity, which would need a cohort with capacity no 
 the quotas add up to the fleet, so KAI's over-quota fair share has nothing to divide here
 (`claims/kai.yaml`, `mechanism`).
 
-**On slurm-bridge** there is no fair share to measure: Slurm computes its fair-share factor only from
-its accounting database, which the profile does not install. Tenants are namespaces, every job has the
-same priority, and B's jobs wait behind A's queued jobs in submission order; the claim expects
-`not_supported`.
+**On slurm-bridge** there is no fair share to measure, for two reasons, either one enough. Slurm computes
+its fair-share factor only from its accounting database, which the profile does not install. And every
+job carries an explicit Slurm priority (the profile's priority annotation), which makes Slurm use that
+number as is and skip every multifactor term, fair share included (`direct_set_prio`; source lines in
+`claims/slurm-bridge.yaml`), so adding accounting alone would not change the outcome. Tenants are
+namespaces, every job of this probe has priority 100, and B's jobs wait behind A's queued jobs in
+submission order; the claim expects `not_supported`.
 
 ### backfill
 
@@ -250,7 +263,10 @@ on backfill. Vanilla, Kueue and KAI document no reservation for a waiting gang, 
 expect `partial`. Slurm documents backfill with reservations, but plans by whole-minute time limits:
 the profile gives the 60 s blockers and the 25 s short jobs the same 2-minute limit, so a short job
 would be expected to end after the gang's planned start and Slurm holds it, and its claim expects
-`not_supported` (`claims/slurm-bridge.yaml`, `mechanism`).
+`not_supported` (`claims/slurm-bridge.yaml`, `mechanism`). That reasoning assumes the gang is queued in
+Slurm before the short jobs. On slurm-bridge it is not: the gang becomes a Slurm job only once
+Kubernetes sees four free nodes (the gating caveat above), while each short job is submitted as soon as
+one node is free, so the short jobs run ahead of the gang in arrival order, not by backfill.
 
 ### topology
 

@@ -5,13 +5,16 @@
 # Read and checked on 2026-10-14. expected is the outcome the documentation
 # implies under the suite's rule for this profile's configuration.
 #
-# Three caveats hold for every claim. Slurm sees nodes, not GPUs: every job
+# Four caveats hold for every claim. Slurm sees nodes, not GPUs: every job
 # drops its GPU request (annotation slurmjob.slinky.slurm.net/gres ""), and
 # each probe pod takes a whole exclusive 8-GPU node, so node placement equals
 # GPU placement here and nothing else. Preemption reaches Kubernetes as a
-# plain pod deletion by slurm-bridge, with no DisruptionTarget condition. And
-# topology is Slurm's default switch-aware placement, since slurm-bridge
-# v1.2.3 cannot ask Slurm for one switch.
+# plain pod deletion by slurm-bridge, with no DisruptionTarget condition.
+# Topology is Slurm's default switch-aware placement, since slurm-bridge
+# v1.2.3 cannot ask Slurm for one switch. And slurm-bridge v1.2.3 submits a
+# job to Slurm only for nodes Kubernetes' own filters already accept
+# (PostFilter, internal/scheduler/plugins/slurmbridge/slurmbridge.go:403-439),
+# so a pod Kubernetes sees no room for never reaches Slurm.
 scheduler: slurm-bridge
 version: slurm-bridge v1.2.3 and slurm-operator v1.2.3 with Slurm 26.05.4 on Kubernetes v1.37.0
 claims:
@@ -34,7 +37,7 @@ claims:
     claim: 'Computing the fair-share factor requires the installation and operation of the Slurm Accounting Database to provide the assigned shares and the consumed, computing resources described below.'
     citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/html/priority_multifactor.shtml#L253
     expected: not_supported
-    mechanism: the profile installs no accounting database (the slurm chart's default, AccountingStorageType accounting_storage/none), so Slurm computes no fair-share factor; tenants are namespaces with no Slurm account; every job has the same priority, 100, so pending jobs run in submission order and tenant A's queued jobs run before B's
+    mechanism: two causes, either enough. The profile installs no accounting database (the slurm chart's default, AccountingStorageType accounting_storage/none), so Slurm computes no fair-share factor. And every job carries an explicit priority (annotation slurmjob.slinky.slurm.net/priority, 100 for every job of this probe), which makes slurmctld set direct_set_prio (src/slurmctld/job_mgr.c lines 7682-7690) and priority/multifactor return that priority with every factor skipped (src/plugins/priority/multifactor/priority_multifactor.c lines 560-568), so accounting alone would not bring fair share either. Tenants are namespaces with no Slurm account; pending jobs run in submission order and tenant A's queued jobs run before B's
   backfill:
     claim: 'Backfill scheduling will initiate lower-priority jobs if doing so does not delay the expected initiation time of any higher priority job. Effectiveness of backfill scheduling is dependent upon users specifying job time limits, otherwise all jobs will have the same time limit and backfilling is impossible.'
     citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/man/man5/slurm.conf.5#L4976
