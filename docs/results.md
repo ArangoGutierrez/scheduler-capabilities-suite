@@ -175,9 +175,13 @@ succeeded before the cut makes the probe red, since preemption was not exercised
 
 **On slurm-bridge** the high-priority job is sent to a Slurm partition of a higher `PriorityTier` over the
 same nodes, where Slurm would cancel the victim gang, one Slurm job, as a whole (`PreemptMode=CANCEL`).
-In this probe it never gets that far: the victim holds every GPU, so Kubernetes' resource filter rejects
-every node, slurm-bridge submits no Slurm job for the high-priority pods (the gating caveat above), and
-the verdict is `not_supported` although Slurm documents the preemption. Were Slurm to preempt,
+That is the documented path, and the claim follows it. But slurm-bridge v1.2.3 submits a job to Slurm
+only for nodes Kubernetes' filters already accept (`internal/scheduler/plugins/slurmbridge/slurmbridge.go`,
+the comment at lines 403-408 and the code at 403-439), so in this probe the high-priority pods reach
+Slurm late or never: the victim holds every GPU, Kubernetes' resource filter rejects every node, and
+slurm-bridge submits no Slurm job for them. The verdict is then `not_supported` although Slurm documents
+the preemption. slurm-bridge's v1.2.3 documentation does not mention this gate (`docs/` and `README.md`
+have no mention of filters or feasible nodes). Were Slurm to preempt,
 slurm-bridge would delete the victim pods with no `DisruptionTarget` condition, so the recorder would see
 deletions, not evictions; a kwok Stage moves each deleted pod to `Failed`. slurm-bridge checks its pods'
 Slurm jobs every 30 s, so the 5 s grace would measure that resync as much as Slurm.
@@ -263,10 +267,14 @@ on backfill. Vanilla, Kueue and KAI document no reservation for a waiting gang, 
 expect `partial`. Slurm documents backfill with reservations, but plans by whole-minute time limits:
 the profile gives the 60 s blockers and the 25 s short jobs the same 2-minute limit, so a short job
 would be expected to end after the gang's planned start and Slurm holds it, and its claim expects
-`not_supported` (`claims/slurm-bridge.yaml`, `mechanism`). That reasoning assumes the gang is queued in
-Slurm before the short jobs. On slurm-bridge it is not: the gang becomes a Slurm job only once
-Kubernetes sees four free nodes (the gating caveat above), while each short job is submitted as soon as
-one node is free, so the short jobs run ahead of the gang in arrival order, not by backfill.
+`not_supported` (`claims/slurm-bridge.yaml`, `mechanism`). That is the documented path: the gang arrives
+first, is queued in Slurm first, and Slurm holds the short jobs behind it. But slurm-bridge v1.2.3 submits
+a job to Slurm only for nodes Kubernetes' filters already accept
+(`internal/scheduler/plugins/slurmbridge/slurmbridge.go`, the comment at lines 403-408 and the code at
+403-439), so in this probe the gang reaches Slurm late: it becomes a Slurm job only once Kubernetes sees
+four free nodes, while each short job is submitted as soon as one node is free. The short jobs then run
+ahead of the gang in arrival order, not by backfill. slurm-bridge's v1.2.3 documentation does not mention
+this gate.
 
 ### topology
 
