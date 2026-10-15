@@ -72,7 +72,7 @@ suite:
 | settle | waits 2 s, so the transition that ended the wait reaches the recorder's watches before the window closes | `settle`, `finish` |
 | close the window | records `window_end`, flushes the recorder, fails the probe if a watch failed or relisted, or if any control-plane container restarted, since the probe started | `finish` |
 | verdict | reads `events.jsonl` back from disk and evaluates the rule, the same call `cmd/scs-report` makes | `finish`, `verdict.Evaluate` |
-| cleanup | deletes the tenant namespaces, waits up to 3 minutes for every suite pod to go, then the profile's cleanup (kueue: the ClusterQueues; kai: the Queues; slurm-bridge: a wait until Slurm has no pending or running job of the probe) | `cleanup` |
+| cleanup | deletes the tenant namespaces, waits up to 3 minutes for every suite pod to go, then the profile's cleanup, up to 2 minutes (kueue: the ClusterQueues; kai: the Queues; slurm-bridge: a wait until Slurm has no pending or running job of the probe); the whole step has 6 minutes | `cleanup` |
 
 Events recorded after `window_end`, such as the cleanup's deletions, never reach a verdict.
 
