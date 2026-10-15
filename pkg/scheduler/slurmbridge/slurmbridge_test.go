@@ -523,6 +523,15 @@ var _ = Describe("WaitReady", func() {
 		err := slurmbridge.WaitReady(short, cs, answer(&paths, ready, nil), names, 10*time.Millisecond, 5*time.Second)
 		Expect(err).To(MatchError("slurm-bridge not ready after 300ms: deployment slurm/slurm-bridge-scheduler is not available"))
 	})
+	It("reports how long it waited when its context is cancelled without a deadline, as a Ginkgo node timeout does", func(ctx SpecContext) {
+		var paths []string
+		cs := fake.NewClientset(objects(corev1.ConditionFalse, tainted("n2"))...)
+		cancelled, cancel := context.WithCancel(ctx)
+		defer cancel()
+		time.AfterFunc(300*time.Millisecond, cancel)
+		err := slurmbridge.WaitReady(cancelled, cs, answer(&paths, ready, nil), names, 10*time.Millisecond, 5*time.Second)
+		Expect(err).To(MatchError("slurm-bridge not ready after 300ms: deployment slurm/slurm-bridge-scheduler is not available"))
+	})
 	It("names the last slurmrestd error", func(ctx SpecContext) {
 		var paths []string
 		cs := fake.NewClientset(objects(corev1.ConditionTrue, tainted("n2"))...)
@@ -593,6 +602,14 @@ var _ = Describe("WaitJobsGone", func() {
 		short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 		defer cancel()
 		err := slurmbridge.WaitJobsGone(short, get, s, 10*time.Millisecond, 5*time.Second)
+		Expect(err).To(MatchError("slurm-bridge: probe gang left Slurm jobs after 300ms: 7 (RUNNING), 9 (PENDING)"))
+	})
+	It("reports how long it waited when its context is cancelled without a deadline, as a Ginkgo node timeout does", func(ctx SpecContext) {
+		get := func(context.Context, string) ([]byte, error) { return []byte(jobsJSON), nil }
+		cancelled, cancel := context.WithCancel(ctx)
+		defer cancel()
+		time.AfterFunc(300*time.Millisecond, cancel)
+		err := slurmbridge.WaitJobsGone(cancelled, get, s, 10*time.Millisecond, 5*time.Second)
 		Expect(err).To(MatchError("slurm-bridge: probe gang left Slurm jobs after 300ms: 7 (RUNNING), 9 (PENDING)"))
 	})
 	It("names the last slurmrestd error when it never answers", func(ctx SpecContext) {
