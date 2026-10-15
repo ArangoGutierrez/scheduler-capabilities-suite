@@ -648,7 +648,7 @@ var deployments = []struct{ namespace, name string }{
 // slurm-bridge has tainted each node as its own. On timeout it returns the
 // last error, which names the cause.
 func waitReady(ctx context.Context, cs kubernetes.Interface, get restGet, names []string, interval, timeout time.Duration) error {
-	limit := bound(ctx, timeout)
+	start := time.Now()
 	var last error
 	err := wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		last = ready(ctx, cs, get, names)
@@ -660,7 +660,7 @@ func waitReady(ctx context.Context, cs kubernetes.Interface, get restGet, names 
 	if last == nil {
 		last = err
 	}
-	return fmt.Errorf("slurm-bridge not ready after %s: %w", limit, last)
+	return fmt.Errorf("slurm-bridge not ready after %s: %w", waited(ctx, start, timeout), last)
 }
 
 func ready(ctx context.Context, cs kubernetes.Interface, get restGet, names []string) error {
@@ -742,7 +742,7 @@ func liveJobs(data []byte, namespaces []string) ([]string, error) {
 // job for a pod in s's namespaces. After timeout it names the jobs left,
 // or the last error.
 func waitJobsGone(ctx context.Context, get restGet, s scheduler.Scenario, interval, timeout time.Duration) error {
-	limit := bound(ctx, timeout)
+	start := time.Now()
 	var namespaces []string
 	for _, t := range s.Tenants {
 		namespaces = append(namespaces, t.Namespace)
@@ -771,17 +771,15 @@ func waitJobsGone(ctx context.Context, get restGet, s scheduler.Scenario, interv
 	if last == nil {
 		last = err
 	}
-	return fmt.Errorf("slurm-bridge: probe %s left Slurm jobs after %s: %w", s.Probe, limit, last)
+	return fmt.Errorf("slurm-bridge: probe %s left Slurm jobs after %s: %w", s.Probe, waited(ctx, start, timeout), last)
 }
 
-// bound is how long a wait of timeout can last under ctx: timeout, or what
-// is left of ctx's deadline when that comes first (an outer node timeout),
-// to the tenth of a second, so a message names the wait that really ran.
-func bound(ctx context.Context, timeout time.Duration) time.Duration {
-	if dl, ok := ctx.Deadline(); ok {
-		if left := time.Until(dl); left < timeout {
-			return left.Round(100 * time.Millisecond)
-		}
+// waited is how long a wait that started at start and gave up really ran:
+// its timeout, or, when ctx ended it first (a deadline, or a cancel such as
+// a Ginkgo node timeout), the time since start to the tenth of a second.
+func waited(ctx context.Context, start time.Time, timeout time.Duration) time.Duration {
+	if ctx.Err() != nil {
+		return time.Since(start).Round(100 * time.Millisecond)
 	}
 	return timeout
 }
