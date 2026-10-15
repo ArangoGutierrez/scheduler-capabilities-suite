@@ -50,7 +50,10 @@ func startScenario(ctx context.Context, s scheduler.Scenario) *probe {
 	}
 	p := &probe{name: s.Probe, scenario: s, t0: time.Now(), restarts: controlPlaneRestarts(ctx)}
 	Expect(env.profile.Prepare(ctx, env.cluster, p.scenario)).To(Succeed())
-	DeferCleanup(p.cleanup, NodeTimeout(4*time.Minute))
+	// The drain may take 3 minutes and the profile's Cleanup 2 more (kueue,
+	// kai and slurm-bridge each wait up to 2), so the node gets up to 6,
+	// within whatever is left of the probe's SpecTimeout.
+	DeferCleanup(p.cleanup, NodeTimeout(6*time.Minute))
 	return p
 }
 
@@ -60,7 +63,7 @@ func startScenario(ctx context.Context, s scheduler.Scenario) *probe {
 // probe's evidence.
 func controlPlaneRestarts(ctx context.Context) map[string]int32 {
 	out := map[string]int32{}
-	for _, ns := range []string{"kube-system", "kueue-system", "kai-scheduler"} {
+	for _, ns := range []string{"kube-system", "kueue-system", "kai-scheduler", "slinky", "slurm"} {
 		pods, err := env.cluster.Clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, q := range pods.Items {

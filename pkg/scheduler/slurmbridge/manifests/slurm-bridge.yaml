@@ -1,0 +1,545 @@
+---
+# Source: slurm-bridge/templates/controllers/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: slurm-bridge-controllers
+  namespace: slurm
+  labels:
+    helm.sh/chart: slurm-bridge-1.2.3
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: slurm-bridge-controllers
+    app.kubernetes.io/instance: slurm-bridge
+    app.kubernetes.io/component: controllers
+
+---
+# Source: slurm-bridge/templates/scheduler/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: slurm-bridge-scheduler
+  namespace: slurm
+
+---
+# Source: slurm-bridge/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slurm-bridge-config
+  namespace: slurm
+  labels:
+    helm.sh/chart: slurm-bridge-1.2.3
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+data:
+  config.yaml: |
+    schedulerName: slurm-bridge-scheduler
+    slurmRestApi: http://slurm-restapi.slurm:6820
+    managedNamespaces:
+      - slurm-bridge
+    mcsLabel: kubernetes
+    partition: slurm-bridge
+
+---
+# Source: slurm-bridge/templates/scheduler/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config
+  namespace: slurm
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: false
+      resourceNamespace: slurm
+      resourceName: slurm-bridge-scheduler
+    profiles:
+    - schedulerName: slurm-bridge-scheduler
+      plugins:
+        queueSort:
+          enabled:
+          - name: 'PrioritySort'
+        preEnqueue:
+          enabled:
+          - name: 'SlurmBridge'
+        preFilter:
+          enabled:
+          - name: 'VolumeBinding'
+          - name: 'NodeResourcesFit'
+          - name: 'SlurmBridge'
+        filter:
+          enabled:
+          - name: 'VolumeBinding'
+          - name: 'TaintToleration'
+          - name: 'NodeResourcesFit'
+          - name: 'SlurmBridge'
+        postFilter:
+          enabled:
+          - name: 'SlurmBridge'
+        reserve:
+          enabled:
+          - name: 'VolumeBinding'
+        preBind:
+          enabled:
+          - name: 'VolumeBinding'
+          - name: 'SlurmBridge'
+        bind:
+          enabled:
+          - name: 'DefaultBinder'
+        multiPoint:
+          disabled:
+          - name: '*'
+      pluginConfig:
+      - name: SlurmBridge
+
+---
+# Source: slurm-bridge/templates/controllers/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: slurm-bridge-controllers
+  namespace: slurm
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/finalizers
+    verbs:
+      - patch
+      - update
+  - apiGroups:
+      - resource.k8s.io
+    resources:
+      - resourceclaims
+    verbs:
+      - delete
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - resource.k8s.io
+    resources:
+      - resourceslices
+    verbs:
+      - get
+      - list
+      - watch
+
+
+---
+# Source: slurm-bridge/templates/scheduler/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: slurm-bridge-scheduler
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumeclaims
+      - persistentvolumes
+    verbs:
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/binding
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - pods/finalizers
+      - pods/status
+    verbs:
+      - patch
+  - apiGroups:
+      - ""
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - apps
+    resources:
+      - replicasets
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - get
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - list
+      - update
+  - apiGroups:
+      - extensions
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - jobset.x-k8s.io
+    resources:
+      - jobsets
+    verbs:
+      - get
+  - apiGroups:
+      - leaderworkerset.x-k8s.io
+    resources:
+      - leaderworkersets
+    verbs:
+      - get
+  - apiGroups:
+      - resource.k8s.io
+    resources:
+      - deviceclasses
+      - resourceslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - resource.k8s.io
+    resources:
+      - resourceclaims
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - resource.k8s.io
+    resources:
+      - resourceclaims/binding
+      - resourceclaims/status
+    verbs:
+      - patch
+  - apiGroups:
+      - scheduling.k8s.io
+    resources:
+      - podgroups
+      - workloads
+    verbs:
+      - get
+  - apiGroups:
+      - scheduling.k8s.io
+    resources:
+      - podgroups/status
+    verbs:
+      - patch
+      - update
+  - apiGroups:
+      - scheduling.x-k8s.io
+    resources:
+      - podgroups
+    verbs:
+      - get
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - csidrivers
+      - csinodes
+      - csistoragecapacities
+      - storageclasses
+    verbs:
+      - get
+      - list
+      - watch
+
+
+---
+# Source: slurm-bridge/templates/controllers/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: slurm-bridge-controllers
+  labels:
+    helm.sh/chart: slurm-bridge-1.2.3
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: slurm-bridge-controllers
+    app.kubernetes.io/instance: slurm-bridge
+    app.kubernetes.io/component: controllers
+subjects:
+- kind: ServiceAccount
+  name: slurm-bridge-controllers
+  namespace: slurm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: slurm-bridge-controllers
+
+---
+# Source: slurm-bridge/templates/scheduler/rbac.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: slurm-bridge-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: slurm-bridge-scheduler
+subjects:
+- kind: ServiceAccount
+  name: slurm-bridge-scheduler
+  namespace: slurm
+
+---
+# Source: slurm-bridge/templates/scheduler/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: slurm-bridge-scheduler::extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: slurm-bridge-scheduler
+  namespace: slurm
+
+---
+# Source: slurm-bridge/templates/controllers/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: slurm-bridge-controllers
+  namespace: slurm
+  labels:
+    helm.sh/chart: slurm-bridge-1.2.3
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: slurm-bridge-controllers
+    app.kubernetes.io/instance: slurm-bridge
+    app.kubernetes.io/component: controllers
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: slurm-bridge-controllers
+    app.kubernetes.io/instance: slurm-bridge
+  ports:
+    - name: metrics
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: health
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+
+---
+# Source: slurm-bridge/templates/controllers/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slurm-bridge-controllers
+  namespace: slurm
+  labels:
+    helm.sh/chart: slurm-bridge-1.2.3
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: slurm-bridge-controllers
+    app.kubernetes.io/instance: slurm-bridge
+    app.kubernetes.io/component: controllers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: slurm-bridge-controllers
+      app.kubernetes.io/instance: slurm-bridge
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: slurm-bridge-1.2.3
+        app.kubernetes.io/version: "1.2.3"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: slurm-bridge-controllers
+        app.kubernetes.io/instance: slurm-bridge
+        app.kubernetes.io/component: controllers
+      annotations:
+        checksum/config: 6cf0586505f395baa70d36817e6be4e55be898e3fa3bf6b94391025c46f4a3cf
+    spec:
+      serviceAccountName: slurm-bridge-controllers
+      containers:
+        - name: slurm-bridge-controllers
+          image: "ghcr.io/slinkyproject/slurm-bridge-controllers:1.2.3@sha256:e2e3e2c82d2c160821f3e4f6c5fe44c6962833add29909921eec624a51f0bd5c"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SLURM_JWT
+              valueFrom:
+                secretKeyRef:
+                  name: slurm-bridge-token
+                  key: auth-token
+          args:
+            - -zap-log-level
+            - "info"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+          volumeMounts:
+            - name: slurm-bridge-config
+              mountPath: /etc/slurm-bridge/
+              readOnly: true
+      volumes:
+        - name: slurm-bridge-config
+          configMap:
+            name: slurm-bridge-config
+
+---
+# Source: slurm-bridge/templates/scheduler/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    helm.sh/chart: slurm-bridge-1.2.3
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: slurm-bridge-scheduler
+    app.kubernetes.io/instance: slurm-bridge
+    app.kubernetes.io/component: scheduler
+  name: slurm-bridge-scheduler
+  namespace: slurm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: slurm-bridge-scheduler
+      app.kubernetes.io/instance: slurm-bridge
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: slurm-bridge-1.2.3
+        app.kubernetes.io/version: "1.2.3"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: slurm-bridge-scheduler
+        app.kubernetes.io/instance: slurm-bridge
+        app.kubernetes.io/component: scheduler
+      annotations:
+        checksum/config: 6cf0586505f395baa70d36817e6be4e55be898e3fa3bf6b94391025c46f4a3cf
+        checksum/scheduler-config: 8565a91a3eeffa85848a7548bc99d86b46eae05550e4a9fdb92058a09d8c2245
+    spec:
+      serviceAccountName: slurm-bridge-scheduler
+      containers:
+      - args:
+        - --config=/etc/kubernetes/scheduler-config.yaml
+        - --feature-gates=DRAExtendedResource=true,DynamicResourceAllocation=true,SchedulerPopFromBackoffQ=false
+        env:
+        - name: SLURM_JWT
+          valueFrom:
+            secretKeyRef:
+              name: slurm-bridge-token
+              key: auth-token
+        image: "ghcr.io/slinkyproject/slurm-bridge-scheduler:1.2.3@sha256:53db9c40f2b9fcdedd2aba800270f3496557bc1a1b995ea3ced2edfe110d0a32"
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 10259
+            scheme: HTTPS
+          initialDelaySeconds: 15
+        name: scheduler
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 10259
+            scheme: HTTPS
+        securityContext:
+          privileged: false
+        volumeMounts:
+        - name: scheduler-config
+          mountPath: /etc/kubernetes
+          readOnly: true
+        - name: slurm-bridge-config
+          mountPath: /etc/slurm-bridge/
+          readOnly: true
+      hostNetwork: false
+      hostPID: false
+      volumes:
+      - name: scheduler-config
+        configMap:
+          name: scheduler-config
+      - name: slurm-bridge-config
+        configMap:
+          name: slurm-bridge-config

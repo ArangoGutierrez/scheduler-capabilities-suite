@@ -80,7 +80,7 @@ A probe is a scenario in `test/e2e/` and a verdict rule in `pkg/verdict/`. For a
    on a fleet that still has suite pods.
 6. **Job features**: if the scenario needs something `workload.Job` cannot express, add the field and
    its check to `pkg/workload/workload.go`, then teach each profile's `Submit` (one package per
-   profile under `pkg/scheduler/`: `vanilla`, `kueue` and `kai`).
+   profile under `pkg/scheduler/`: `vanilla`, `kueue`, `kai` and `slurmbridge`).
 7. **Docs**: the label and parameters in [docs/options.md](docs/options.md); the measurements and
    what the verdict can claim in [docs/results.md](docs/results.md); the probe order in step 5 of
    [docs/architecture.md](docs/architecture.md#data-flow); and, for a capability, its row in the

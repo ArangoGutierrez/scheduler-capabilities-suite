@@ -1,0 +1,11 @@
+# Values for the slurm-bridge 1.2.3 chart, namespace slurm. The admission
+# webhook is off (it needs cert-manager); the suite's pods set schedulerName
+# themselves. Both images are pinned by digest.
+admission:
+  enabled: false
+scheduler:
+  image:
+    tag: "1.2.3@sha256:53db9c40f2b9fcdedd2aba800270f3496557bc1a1b995ea3ced2edfe110d0a32"
+controllers:
+  image:
+    tag: "1.2.3@sha256:e2e3e2c82d2c160821f3e4f6c5fe44c6962833add29909921eec624a51f0bd5c"

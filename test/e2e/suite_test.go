@@ -1,7 +1,7 @@
 // Package e2e runs the suite's capability probes against one profile on a
 // fresh kind cluster with a kwok GPU fleet. Configure it with SCS_PROFILE
-// (vanilla, kueue or kai), SCS_RUN_ID and SCS_RESULTS (an absolute directory);
-// hack/e2e.sh sets them.
+// (vanilla, kueue, kai or slurm-bridge), SCS_RUN_ID and SCS_RESULTS (an
+// absolute directory); hack/e2e.sh sets them.
 package e2e
 
 import (
@@ -31,6 +31,7 @@ import (
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/kai"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/kueue"
+	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/slurmbridge"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/scheduler/vanilla"
 	"github.com/ArangoGutierrez/scheduler-capabilities-suite/pkg/verdict"
 )
@@ -44,9 +45,10 @@ func TestE2E(t *testing.T) {
 
 // profiles maps SCS_PROFILE to a constructor.
 var profiles = map[string]func() scheduler.Profile{
-	"vanilla": func() scheduler.Profile { return vanilla.New() },
-	"kueue":   func() scheduler.Profile { return kueue.New() },
-	"kai":     func() scheduler.Profile { return kai.New() },
+	"vanilla":      func() scheduler.Profile { return vanilla.New() },
+	"kueue":        func() scheduler.Profile { return kueue.New() },
+	"kai":          func() scheduler.Profile { return kai.New() },
+	"slurm-bridge": func() scheduler.Profile { return slurmbridge.New() },
 }
 
 // env is the suite's state, set up in BeforeSuite.
@@ -209,7 +211,7 @@ func teardownCluster(ctx SpecContext) {
 // digest-qualified image ID.
 func images(ctx context.Context) map[string]string {
 	out := map[string]string{}
-	for _, ns := range []string{"kube-system", "kueue-system", "kai-scheduler"} {
+	for _, ns := range []string{"kube-system", "kueue-system", "kai-scheduler", "slinky", "slurm"} {
 		pods, err := env.cluster.Clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			continue

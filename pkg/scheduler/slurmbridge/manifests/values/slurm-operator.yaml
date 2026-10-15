@@ -1,0 +1,12 @@
+# Values for the slurm-operator 1.2.3 chart, namespace slinky.
+# The webhook is off: with cert-manager off the chart would generate its
+# serving certificate at render time (genCA), which the suite will not commit,
+# and its only mutating webhook patches the bindings of slurmd worker pods,
+# which this profile does not run. The operator image is pinned by digest.
+certManager:
+  enabled: false
+webhook:
+  enabled: false
+operator:
+  image:
+    digest: sha256:b35e76c09e587f1bc902bcff228b6c14e63ffd173afebf33e627480e67bc36ee

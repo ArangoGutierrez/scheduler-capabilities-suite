@@ -1,0 +1,299 @@
+---
+# Source: slurm-operator/templates/operator/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: slurm-operator
+  namespace: slinky
+  labels:
+    helm.sh/chart: slurm-operator-1.2.3
+    app.kubernetes.io/part-of: slurm-operator
+    app.kubernetes.io/name: slurm-operator
+    app.kubernetes.io/instance: slurm-operator
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: slurm-operator/templates/operator/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: slurm-operator
+  namespace: slinky
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - events
+      - persistentvolumeclaims
+      - pods
+      - secrets
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - secrets/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+      - deployments
+      - statefulsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - servicemonitors
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - policy
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - slinky.slurm.net
+    resources:
+      - accountings
+      - controllers
+      - loginsets
+      - nodesets
+      - restapis
+      - tokens
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - slinky.slurm.net
+    resources:
+      - accountings/finalizers
+      - controllers/finalizers
+      - loginsets/finalizers
+      - nodesets/finalizers
+      - restapis/finalizers
+      - tokens/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - slinky.slurm.net
+    resources:
+      - accountings/status
+      - controllers/status
+      - loginsets/status
+      - nodesets/status
+      - restapis/status
+      - tokens/status
+    verbs:
+      - get
+      - patch
+      - update
+
+
+---
+# Source: slurm-operator/templates/operator/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: slurm-operator
+  labels:
+    helm.sh/chart: slurm-operator-1.2.3
+    app.kubernetes.io/part-of: slurm-operator
+    app.kubernetes.io/name: slurm-operator
+    app.kubernetes.io/instance: slurm-operator
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+subjects:
+- kind: ServiceAccount
+  name: slurm-operator
+  namespace: slinky
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: slurm-operator
+
+---
+# Source: slurm-operator/templates/operator/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: slurm-operator
+  namespace: slinky
+  labels:
+    helm.sh/chart: slurm-operator-1.2.3
+    app.kubernetes.io/part-of: slurm-operator
+    app.kubernetes.io/name: slurm-operator
+    app.kubernetes.io/instance: slurm-operator
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  selector:
+    helm.sh/chart: slurm-operator-1.2.3
+    app.kubernetes.io/part-of: slurm-operator
+    app.kubernetes.io/name: slurm-operator
+    app.kubernetes.io/instance: slurm-operator
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+  ports:
+    - name: metrics
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: health
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+
+---
+# Source: slurm-operator/templates/operator/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slurm-operator
+  namespace: slinky
+  labels:
+    helm.sh/chart: slurm-operator-1.2.3
+    app.kubernetes.io/part-of: slurm-operator
+    app.kubernetes.io/name: slurm-operator
+    app.kubernetes.io/instance: slurm-operator
+    app.kubernetes.io/version: "1.2.3"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: slurm-operator
+      app.kubernetes.io/instance: slurm-operator
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: slurm-operator-1.2.3
+        app.kubernetes.io/part-of: slurm-operator
+        app.kubernetes.io/name: slurm-operator
+        app.kubernetes.io/instance: slurm-operator
+        app.kubernetes.io/version: "1.2.3"
+        app.kubernetes.io/managed-by: Helm
+    spec:
+      hostname: slurm-operator
+      priorityClassName: 
+      serviceAccountName: slurm-operator
+      
+      containers:
+        - name: slurm-operator
+          image: ghcr.io/slinkyproject/slurm-operator@sha256:b35e76c09e587f1bc902bcff228b6c14e63ffd173afebf33e627480e67bc36ee
+          imagePullPolicy: IfNotPresent
+          args:
+            - --accounting-workers
+            - "4"
+            - --controller-workers
+            - "4"
+            - --loginset-workers
+            - "4"
+            - --nodeset-workers
+            - "4"
+            - --restapi-workers
+            - "4"
+            - --token-workers
+            - "4"
+            - --slurmclient-workers
+            - "2"
+            - --zap-log-level
+            - "info"
+            - --health-addr
+            - ":8081"
+            - --metrics-addr
+            - ":8080"
+            - --profile-addr
+            - "localhost:6060"
+            - --leader-elect
+            - --leader-elect-namespace
+            - slinky
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081

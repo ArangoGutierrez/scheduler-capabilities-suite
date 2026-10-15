@@ -21,7 +21,7 @@ import (
 )
 
 // Profiles lists every profile the suite knows, in report order.
-var Profiles = []string{"vanilla", "kueue", "kai"}
+var Profiles = []string{"vanilla", "kueue", "kai", "slurm-bridge"}
 
 // File names inside a run directory.
 const (

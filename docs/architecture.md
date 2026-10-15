@@ -1,7 +1,8 @@
 # Architecture
 
 The suite runs scheduler-neutral scenarios against a real kube-scheduler (and, for the kueue profile,
-real Kueue; for the kai profile, KAI Scheduler places the pods instead) on a cluster whose GPU nodes are
+real Kueue; for the kai profile, KAI Scheduler places the pods instead; for the slurm-bridge profile,
+Slurm decides each placement and slurm-bridge's scheduler binds the pods) on a cluster whose GPU nodes are
 simulated. Placement and timing are real scheduler
 decisions; no workload actually runs.
 
@@ -9,7 +10,7 @@ Terms used below:
 
 - **probe**: one capability scenario, one Ginkgo spec in `test/e2e/`.
 - **profile**: how one scheduler expresses the suite's jobs (`pkg/scheduler/vanilla`, `pkg/scheduler/kueue`,
-  `pkg/scheduler/kai`).
+  `pkg/scheduler/kai`, `pkg/scheduler/slurmbridge`).
 - **claim**: what a scheduler's documentation says about a capability, with a citation, in `claims/`.
 - **control**: a probe that repeats a scenario without the mechanism under test (`gang-control`,
   `topology-control`), to show what the scheduler does anyway.
@@ -20,8 +21,8 @@ Terms used below:
 
 ```mermaid
 flowchart LR
-    suite["make e2e<br/>hack/e2e.sh + test/e2e"] --> cluster["kind cluster scs-vanilla, scs-kueue or scs-kai<br/>+ kwok fleet: 4 nodes x 8 GPUs"]
-    suite --> profile["scheduler profile<br/>vanilla, kueue or kai"]
+    suite["make e2e<br/>hack/e2e.sh + test/e2e"] --> cluster["kind cluster scs-vanilla, scs-kueue, scs-kai or scs-slurm-bridge<br/>+ kwok fleet: 4 nodes x 8 GPUs"]
+    suite --> profile["scheduler profile<br/>vanilla, kueue, kai or slurm-bridge"]
     profile --> cluster
     suite -- "submits jobs through the profile" --> workloads["Jobs, pods, PodGroups,<br/>Kueue Workloads"]
     workloads --> cluster
@@ -49,7 +50,10 @@ suite:
    `n2` in `rack-a`, `n3` and `n4` in `rack-b`, 8 `nvidia.com/gpu` each;
 3. installs the profile (vanilla: three PriorityClasses; kueue: the Kueue release, its webhook wait, a
    Topology, a ResourceFlavor and two WorkloadPriorityClasses; kai: the KAI chart render without its helm
-   hooks, a wait for the operator's Deployments and webhooks, two PriorityClasses and a Topology);
+   hooks, a wait for the operator's Deployments and webhooks, two PriorityClasses and a Topology;
+   slurm-bridge: the operator, Slurm and slurm-bridge chart renders with keys generated at install, the
+   PodGroup CRD, a Token and a kwok Stage, the fleet nodes registered as Slurm external nodes, a wait
+   until Slurm has them idle in both partitions, and two PriorityClasses);
 4. measures the host-to-API-server clock offset and starts the recorder;
 5. runs the selected probes in a fixed order: gang, gang-control, priority, preemption, fair-share,
    backfill, topology, topology-control;
@@ -68,7 +72,7 @@ suite:
 | settle | waits 2 s, so the transition that ended the wait reaches the recorder's watches before the window closes | `settle`, `finish` |
 | close the window | records `window_end`, flushes the recorder, fails the probe if a watch failed or relisted, or if any control-plane container restarted, since the probe started | `finish` |
 | verdict | reads `events.jsonl` back from disk and evaluates the rule, the same call `cmd/scs-report` makes | `finish`, `verdict.Evaluate` |
-| cleanup | deletes the tenant namespaces, waits up to 3 minutes for every suite pod to go, then the profile's cleanup (kueue: the ClusterQueues; kai: the Queues) | `cleanup` |
+| cleanup | deletes the tenant namespaces, waits up to 3 minutes for every suite pod to go, then the profile's cleanup, up to 2 minutes (kueue: the ClusterQueues; kai: the Queues; slurm-bridge: a wait until Slurm has no pending or running job of the probe); the whole step has up to 6 minutes, within what is left of the probe's spec timeout | `cleanup` |
 
 Events recorded after `window_end`, such as the cleanup's deletions, never reach a verdict.
 
@@ -89,6 +93,7 @@ Events recorded after `window_end`, such as the cleanup's deletions, never reach
 | `pkg/scheduler/vanilla` | the kube-scheduler 1.37 profile: PriorityClasses, standalone PodGroups |
 | `pkg/scheduler/kueue` | the Kueue v0.20.1 profile: embedded release manifest, queues, cohorts, topology |
 | `pkg/scheduler/kai` | the KAI Scheduler v0.18.5 profile: embedded chart render, PodGroups, queues, topology |
+| `pkg/scheduler/slurmbridge` | the slurm-bridge v1.2.3 profile: embedded chart renders, generated keys, Slurm external nodes and partitions, PodGroups, Slurm job annotations |
 | `pkg/verdict` | the verdict rules: pure functions from events and parameters to a verdict |
 | `pkg/workload` | a scheduler-neutral job description and the batch/v1 Job it starts from |
 | `cmd/scs-report` | rebuilds a run's `verdicts.json` and `summary.md` offline |

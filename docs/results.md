@@ -12,7 +12,7 @@ results/<run-id>/
                          feature gates, image digests, manifest sha256s, scheduler settings,
                          clock offsets, watch errors
   summary.md             documented vs observed for every probe of every profile
-  vanilla/               one directory per profile that ran (vanilla, kueue, kai)
+  vanilla/               one directory per profile that ran (vanilla, kueue, kai, slurm-bridge)
     events.jsonl         every recorded object change: the source of truth
     probes.json          each finished probe's parameters and window end
     claims.yaml          the claims file the run used
@@ -49,7 +49,7 @@ Run fixture-run. Each verdict comes from a single run: evidence for the POC, not
 | column | meaning |
 |---|---|
 | capability | one of gang, priority, preemption, fair-share, backfill, topology; rows follow that order |
-| profile | vanilla, then kueue, then kai |
+| profile | vanilla, then kueue, then kai, then slurm-bridge |
 | documented | the `expected` outcome of the profile's claim in `claims.yaml` |
 | observed | the outcome the verdict rule computed from the recorded events |
 | agree | `yes` when documented and observed are the same outcome |
@@ -86,6 +86,19 @@ check failed, or the offline rebuild disagreed with the live verdicts.
 Each rule reads only its probe's events up to the probe's `window_end`. Times are the recorder's
 `observed_at`. [options.md](options.md#probe-parameters) has every scenario's jobs and parameters.
 
+**On slurm-bridge**, four caveats hold for every verdict (`claims/slurm-bridge.yaml`). Slurm sees nodes,
+not GPUs: every job drops its GPU request, and each probe pod takes a whole 8-GPU node, so node
+placement equals GPU placement here and nothing more; the profile refuses a job whose pods are not whole
+nodes. Preemption reaches Kubernetes as a plain pod deletion by slurm-bridge. Topology is Slurm's
+default switch-aware placement, since slurm-bridge cannot ask Slurm for one rack. And slurm-bridge
+v1.2.3 submits a job to Slurm only for nodes that Kubernetes' own filters already accept (its PostFilter,
+`internal/scheduler/plugins/slurmbridge/slurmbridge.go:403-439` at v1.2.3): a pod for which Kubernetes
+sees no free node never becomes a Slurm job, so Slurm decides only among jobs Kubernetes already has room
+for. This is why Slurm's partition preemption never fires in the preemption probe and why the short jobs
+run ahead of the gang in backfill (below). Each placement has also been observed to take about 4 s in
+Slurm, every allocation logged right after slurmctld fails to resolve the external node's name; that
+the failed lookup causes the delay is not proven.
+
 ### gang
 
 **Measures** whether each gang's pods were placed together. A gang is partly placed from its first
@@ -115,7 +128,11 @@ completed until it is admitted.
 later, and nodes free up one at a time as the fillers end. No profile allows preemption here
 (vanilla's high-priority class has `preemptionPolicy: Never`; the kueue ClusterQueue has no preemption
 policy; the kai Queue protects running work for 24 h with `preemptMinRuntime` and `reclaimMinRuntime`,
-since KAI does not read `preemptionPolicy`), so this probe tests queue order only.
+since KAI does not read `preemptionPolicy`; on slurm-bridge every job of this probe is in one Slurm
+partition, and Slurm preempts only across partition tiers), so this probe tests queue order only.
+On slurm-bridge the order is not Slurm's alone: because of the Kubernetes gate described under
+preemption, which waiting pod reaches Slurm when a node frees is chosen by slurm-bridge's Kubernetes
+priority queue first.
 
 | measurement | meaning |
 |---|---|
@@ -158,6 +175,19 @@ high-priority job's second pod was scheduled.
 scheduler preemption from a Kueue suspension or a deletion. Every Job has a `backoffLimit` of 10, so the
 Job controller does not delete the survivors itself after the first eviction. A victim pod that
 succeeded before the cut makes the probe red, since preemption was not exercised.
+
+**On slurm-bridge** the high-priority job is sent to a Slurm partition of a higher `PriorityTier` over the
+same nodes, where Slurm would cancel the victim gang, one Slurm job, as a whole (`PreemptMode=CANCEL`).
+That is the documented path, and the claim follows it. But slurm-bridge v1.2.3 submits a job to Slurm
+only for nodes Kubernetes' filters already accept (`internal/scheduler/plugins/slurmbridge/slurmbridge.go`,
+the comment at lines 403-408 and the code at 403-439), so in this probe the high-priority pods reach
+Slurm late or never: the victim holds every GPU, Kubernetes' resource filter rejects every node, and
+slurm-bridge submits no Slurm job for them. The verdict is then `not_supported` although Slurm documents
+the preemption. slurm-bridge's v1.2.3 documentation does not mention this gate (`docs/` and `README.md`
+have no mention of filters or feasible nodes). Were Slurm to preempt,
+slurm-bridge would delete the victim pods with no `DisruptionTarget` condition, so the recorder would see
+deletions, not evictions; a kwok Stage moves each deleted pod to `Failed`. slurm-bridge checks its pods'
+Slurm jobs every 30 s, so the 5 s grace would measure that resync as much as Slurm.
 
 ### fair-share
 
@@ -204,6 +234,14 @@ fair sharing of borrowable capacity, which would need a cohort with capacity no 
 the quotas add up to the fleet, so KAI's over-quota fair share has nothing to divide here
 (`claims/kai.yaml`, `mechanism`).
 
+**On slurm-bridge** there is no fair share to measure, for two reasons, either one enough. Slurm computes
+its fair-share factor only from its accounting database, which the profile does not install. And every
+job carries an explicit Slurm priority (the profile's priority annotation), which makes Slurm use that
+number as is and skip every multifactor term, fair share included (`direct_set_prio`; source lines in
+`claims/slurm-bridge.yaml`), so adding accounting alone would not change the outcome. Tenants are
+namespaces, every job of this probe has priority 100, and B's jobs wait behind A's queued jobs in
+submission order; the claim expects `not_supported`.
+
 ### backfill
 
 **Measures** whether short jobs ran in the gap before a waiting fleet-wide gang without delaying it.
@@ -228,8 +266,18 @@ The three delay measurements are absent when the gang never started.
 **Attribution.** Only the time short jobs held nodes past the earliest start counts against them. The
 rest of the gang's delay is the scheduler's own start latency (on vanilla, a waiting gang's retry
 backoff can add up to about 17 s), recorded separately as `big_start_after_free_s` so it is not blamed
-on backfill. None of the three profiles documents a
-reservation for a waiting gang, so all three claims expect `partial`.
+on backfill. Vanilla, Kueue and KAI document no reservation for a waiting gang, so their claims
+expect `partial`. Slurm documents backfill with reservations, but plans by whole-minute time limits:
+the profile gives the 60 s blockers and the 25 s short jobs the same 2-minute limit, so a short job
+would be expected to end after the gang's planned start and Slurm holds it, and its claim expects
+`not_supported` (`claims/slurm-bridge.yaml`, `mechanism`). That is the documented path: the gang arrives
+first, is queued in Slurm first, and Slurm holds the short jobs behind it. But slurm-bridge v1.2.3 submits
+a job to Slurm only for nodes Kubernetes' filters already accept
+(`internal/scheduler/plugins/slurmbridge/slurmbridge.go`, the comment at lines 403-408 and the code at
+403-439), so in this probe the gang reaches Slurm late: it becomes a Slurm job only once Kubernetes sees
+four free nodes, while each short job is submitted as soon as one node is free. The short jobs then run
+ahead of the gang in arrival order, not by backfill. slurm-bridge's v1.2.3 documentation does not mention
+this gate.
 
 ### topology
 
@@ -253,6 +301,11 @@ that picks two of them at random lands in one rack one time in three, so three o
 happens about one run in 27. `topology-control` runs the same attempts without the constraint, on
 vanilla, and shows what the scheduler does anyway; by the same odds the control itself varies from run
 to run. A single `supported` is suggestive; only repeated runs separate the mechanism from luck.
+
+**On slurm-bridge** the gang cannot ask for one rack, so the verdict is Slurm's default best-fit over
+its switch tree (leaf switch `s1` for `rack-a`, `s2` for `rack-b`), not a requested constraint. Its
+scheduler also ignores the filler's pin to `n1` and lets Slurm choose the node, which still leaves one
+rack with two free nodes.
 
 ## Before you trust a run
 
