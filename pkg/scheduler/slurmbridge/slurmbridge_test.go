@@ -829,7 +829,7 @@ var _ = Describe("Cleanup", func() {
 		s := scheduler.Scenario{Probe: "gang", Tenants: []scheduler.Tenant{{Name: "t1", Namespace: "scs-gang-t1", EntitlementGPUs: 32}}}
 		err := slurmbridge.NewWith(rand.Reader, 300*time.Millisecond).Cleanup(ctx, restCluster(&paths), s)
 		Expect(err).To(MatchError("slurm-bridge: probe gang left Slurm jobs after 300ms: 7 (RUNNING), 9 (PENDING)"))
-	})
+	}, SpecTimeout(10*time.Second))
 })
 
 var _ = Describe("claims", func() {
