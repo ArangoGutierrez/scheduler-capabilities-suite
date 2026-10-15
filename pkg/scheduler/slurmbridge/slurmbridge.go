@@ -355,11 +355,21 @@ func registerNodes(ctx context.Context, cs kubernetes.Interface, s fleet.Spec) e
 	return nil
 }
 
-// Profile is the slurm-bridge profile.
-type Profile struct{}
+// Profile is the slurm-bridge profile: random is where Install reads the
+// auth keys from, cleanupTimeout how long Cleanup waits for Slurm to drain.
+type Profile struct {
+	random         io.Reader
+	cleanupTimeout time.Duration
+}
 
-// New returns the slurm-bridge profile.
-func New() *Profile { return &Profile{} }
+// New returns the slurm-bridge profile: keys from crypto/rand, Cleanup
+// bounded at two minutes.
+func New() *Profile { return &Profile{random: rand.Reader, cleanupTimeout: 2 * time.Minute} }
+
+// objects is installObjects with the profile's key source.
+func (p *Profile) objects() ([]*unstructured.Unstructured, map[string]string, error) {
+	return installObjects(p.random)
+}
 
 // Name implements scheduler.Profile.
 func (*Profile) Name() string { return "slurm-bridge" }
@@ -374,8 +384,8 @@ func (*Profile) WorkloadGVR() *schema.GroupVersionResource { return nil }
 // Install applies the namespaces, generated keys, renders, CRD, Token and
 // kwok Stage, registers the fleet nodes, waits until Slurm has them idle in
 // both partitions, then creates the PriorityClasses.
-func (*Profile) Install(ctx context.Context, c *cluster.Cluster) (map[string]string, error) {
-	objs, sums, err := installObjects(rand.Reader)
+func (p *Profile) Install(ctx context.Context, c *cluster.Cluster) (map[string]string, error) {
+	objs, sums, err := p.objects()
 	if err != nil {
 		return nil, err
 	}
@@ -418,11 +428,11 @@ func (*Profile) Prepare(ctx context.Context, c *cluster.Cluster, s scheduler.Sce
 	return scheduler.CreateNamespaces(ctx, c.Clientset, s)
 }
 
-// Cleanup waits, at most two minutes, until Slurm has no pending or running
+// Cleanup waits, at most cleanupTimeout, until Slurm has no pending or running
 // job for the probe's pods. The harness sees pods only; a Slurm job left
 // behind would hold nodes from the next probe.
-func (*Profile) Cleanup(ctx context.Context, c *cluster.Cluster, s scheduler.Scenario) error {
-	return waitJobsGone(ctx, restAPI(c.Clientset), s, 2*time.Second, 2*time.Minute)
+func (p *Profile) Cleanup(ctx context.Context, c *cluster.Cluster, s scheduler.Scenario) error {
+	return waitJobsGone(ctx, restAPI(c.Clientset), s, 2*time.Second, p.cleanupTimeout)
 }
 
 // nodeGPUs is the GPU count every fleet node shares.
@@ -638,6 +648,7 @@ var deployments = []struct{ namespace, name string }{
 // slurm-bridge has tainted each node as its own. On timeout it returns the
 // last error, which names the cause.
 func waitReady(ctx context.Context, cs kubernetes.Interface, get restGet, names []string, interval, timeout time.Duration) error {
+	limit := bound(ctx, timeout)
 	var last error
 	err := wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		last = ready(ctx, cs, get, names)
@@ -649,7 +660,7 @@ func waitReady(ctx context.Context, cs kubernetes.Interface, get restGet, names 
 	if last == nil {
 		last = err
 	}
-	return fmt.Errorf("slurm-bridge not ready after %s: %w", timeout, last)
+	return fmt.Errorf("slurm-bridge not ready after %s: %w", limit, last)
 }
 
 func ready(ctx context.Context, cs kubernetes.Interface, get restGet, names []string) error {
@@ -731,6 +742,7 @@ func liveJobs(data []byte, namespaces []string) ([]string, error) {
 // job for a pod in s's namespaces. After timeout it names the jobs left,
 // or the last error.
 func waitJobsGone(ctx context.Context, get restGet, s scheduler.Scenario, interval, timeout time.Duration) error {
+	limit := bound(ctx, timeout)
 	var namespaces []string
 	for _, t := range s.Tenants {
 		namespaces = append(namespaces, t.Namespace)
@@ -759,5 +771,17 @@ func waitJobsGone(ctx context.Context, get restGet, s scheduler.Scenario, interv
 	if last == nil {
 		last = err
 	}
-	return fmt.Errorf("slurm-bridge: probe %s left Slurm jobs after %s: %w", s.Probe, timeout, last)
+	return fmt.Errorf("slurm-bridge: probe %s left Slurm jobs after %s: %w", s.Probe, limit, last)
+}
+
+// bound is how long a wait of timeout can last under ctx: timeout, or what
+// is left of ctx's deadline when that comes first (an outer node timeout),
+// to the tenth of a second, so a message names the wait that really ran.
+func bound(ctx context.Context, timeout time.Duration) time.Duration {
+	if dl, ok := ctx.Deadline(); ok {
+		if left := time.Until(dl); left < timeout {
+			return left.Round(100 * time.Millisecond)
+		}
+	}
+	return timeout
 }
