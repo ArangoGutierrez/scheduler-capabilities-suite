@@ -14,7 +14,9 @@
 # v1.2.3 cannot ask Slurm for one switch. And slurm-bridge v1.2.3 submits a
 # job to Slurm only for nodes Kubernetes' own filters already accept
 # (PostFilter, internal/scheduler/plugins/slurmbridge/slurmbridge.go:403-439),
-# so a pod Kubernetes sees no room for never reaches Slurm.
+# so a pod Kubernetes sees no room for never reaches Slurm. That last caveat
+# comes from the code; the v1.2.3 documentation does not describe it, so no
+# expected outcome below reflects it.
 scheduler: slurm-bridge
 version: slurm-bridge v1.2.3 and slurm-operator v1.2.3 with Slurm 26.05.4 on Kubernetes v1.37.0
 claims:

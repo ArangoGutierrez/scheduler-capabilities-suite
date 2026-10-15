@@ -130,6 +130,9 @@ later, and nodes free up one at a time as the fillers end. No profile allows pre
 policy; the kai Queue protects running work for 24 h with `preemptMinRuntime` and `reclaimMinRuntime`,
 since KAI does not read `preemptionPolicy`; on slurm-bridge every job of this probe is in one Slurm
 partition, and Slurm preempts only across partition tiers), so this probe tests queue order only.
+On slurm-bridge the order is not Slurm's alone: because of the Kubernetes gate described under
+preemption, which waiting pod reaches Slurm when a node frees is chosen by slurm-bridge's Kubernetes
+priority queue first.
 
 | measurement | meaning |
 |---|---|
