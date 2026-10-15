@@ -293,7 +293,7 @@ var _ = Describe("InstallObjects", func() {
 		Expect(err).To(MatchError("slurm-bridge: generate jwt.key: unexpected EOF"))
 	})
 
-	It("is what Install applies, with keys read from the profile's key source", func() {
+	It("builds the objects Install applies, with keys read from the profile's key source", func() {
 		objs, _, err := slurmbridge.ProfileObjects(slurmbridge.NewWith(random(), 2*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(keyOf(find(objs, "Secret", "slurm-auth-slurm"), "slurm.key")[:4]).To(Equal("AAEC"))
